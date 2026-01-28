@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { FileText, Loader2 } from 'lucide-react';
 
 interface GenerateSummaryButtonProps {
   sessionId: string;
@@ -35,16 +37,26 @@ export default function GenerateSummaryButton({ sessionId }: GenerateSummaryButt
   };
 
   return (
-    <div>
-      <button
+    <div className="space-y-2">
+      <Button
         onClick={handleGenerateSummary}
         disabled={loading}
-        className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+        variant="outline"
       >
-        {loading ? 'Generating...' : 'Generate Summary'}
-      </button>
+        {loading ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            Generating...
+          </>
+        ) : (
+          <>
+            <FileText className="h-4 w-4 mr-2" />
+            Generate Summary
+          </>
+        )}
+      </Button>
       {error && (
-        <p className="mt-2 text-red-600 text-sm">{error}</p>
+        <p className="text-sm text-destructive">{error}</p>
       )}
     </div>
   );

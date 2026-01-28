@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Phone } from 'lucide-react';
 
 interface StartSessionButtonProps {
   agentId: string;
@@ -40,18 +42,20 @@ export default function StartSessionButton({ agentId }: StartSessionButtonProps)
   };
 
   return (
-    <div>
-      <button
+    <div className="space-y-4">
+      <Button
         onClick={handleStartSession}
         disabled={loading}
-        className="w-full md:w-auto px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+        size="lg"
+        className="w-full"
       >
+        <Phone className="h-4 w-4 mr-2" />
         {loading ? 'Starting Session...' : 'Start Voice Session'}
-      </button>
+      </Button>
       {error && (
-        <p className="mt-4 text-red-600 text-sm">{error}</p>
+        <p className="text-sm text-destructive">{error}</p>
       )}
-      <p className="mt-4 text-sm text-gray-600">
+      <p className="text-sm text-muted-foreground">
         Note: Vapi integration is stubbed. The session will be created, but the actual voice call will need to be configured with the Vapi SDK.
       </p>
     </div>

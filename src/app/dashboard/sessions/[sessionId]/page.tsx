@@ -3,6 +3,11 @@ import TranscriptViewer from '@/components/TranscriptViewer';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import GenerateSummaryButton from './GenerateSummaryButton';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft, Calendar, Clock, MessageSquare, FileText } from 'lucide-react';
 
 interface PageProps {
   params: Promise<{ sessionId: string }>;
@@ -20,109 +25,174 @@ export default async function SessionDetailPage({ params }: PageProps) {
 
   const { session, transcript, summary } = sessionData;
 
-  const startedDate = new Date(session.started_at).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  const endedDate = session.ended_at
-    ? new Date(session.ended_at).toLocaleString('en-US', {
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return {
+      date: date.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
+      }),
+      time: date.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
-      })
-    : null;
+      }),
+    };
+  };
+
+  const started = formatDateTime(session.started_at);
+  const ended = session.ended_at ? formatDateTime(session.ended_at) : null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <Link
-          href="/dashboard/sessions"
-          className="text-blue-600 hover:text-blue-800 mb-4 inline-block"
-        >
-          ← Back to Sessions
-        </Link>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/dashboard/sessions">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Link>
+            </Button>
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight">Session Details</h1>
+          <p className="text-muted-foreground">
+            {session.agent?.name || 'Unknown Agent'}
+          </p>
+        </div>
+        <Badge variant={session.status === 'active' ? 'success' : 'secondary'}>
+          {session.status}
+        </Badge>
+      </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-8 mt-4">
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">
-              Session Details
-            </h1>
-            <div className="grid md:grid-cols-2 gap-4 text-sm">
+      {/* Info Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Session Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="space-y-4">
               <div>
-                <span className="font-semibold text-gray-700">Agent:</span>
-                <span className="ml-2 text-gray-900">
+                <div className="text-sm font-medium text-muted-foreground mb-1">
+                  Agent
+                </div>
+                <div className="text-base font-medium">
                   {session.agent?.name || 'Unknown'}
-                </span>
-              </div>
-              <div>
-                <span className="font-semibold text-gray-700">Status:</span>
-                <span
-                  className={`ml-2 px-2 py-1 rounded text-xs font-medium ${
-                    session.status === 'active'
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-gray-100 text-gray-800'
-                  }`}
-                >
-                  {session.status}
-                </span>
-              </div>
-              <div>
-                <span className="font-semibold text-gray-700">Started:</span>
-                <span className="ml-2 text-gray-900">{startedDate}</span>
-              </div>
-              {endedDate && (
-                <div>
-                  <span className="font-semibold text-gray-700">Ended:</span>
-                  <span className="ml-2 text-gray-900">{endedDate}</span>
                 </div>
-              )}
-            </div>
-          </div>
-
-          <div className="border-t border-gray-200 pt-6 mb-6">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-              Transcript
-            </h2>
-            <TranscriptViewer turns={transcript} />
-          </div>
-
-          <div className="border-t border-gray-200 pt-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-semibold text-gray-900">Summary</h2>
-              {!summary && (
-                <GenerateSummaryButton sessionId={sessionId} />
-              )}
-            </div>
-            {summary ? (
-              <div className="space-y-4">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-gray-900 whitespace-pre-wrap">
-                    {summary.summary_text}
-                  </p>
-                </div>
-                {summary.summary_json && (
-                  <details className="bg-gray-50 rounded-lg p-4">
-                    <summary className="cursor-pointer font-semibold text-gray-700 mb-2">
-                      Structured Summary (JSON)
-                    </summary>
-                    <pre className="mt-2 text-xs overflow-auto">
-                      {JSON.stringify(summary.summary_json, null, 2)}
-                    </pre>
-                  </details>
+                {session.agent?.description && (
+                  <div className="text-sm text-muted-foreground mt-1">
+                    {session.agent.description}
+                  </div>
                 )}
               </div>
-            ) : (
-              <p className="text-gray-500 italic">No summary available yet.</p>
-            )}
+            </div>
+            <div className="space-y-4">
+              <div>
+                <div className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Started
+                </div>
+                <div className="text-base font-medium">{started.date}</div>
+                <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                  <Clock className="h-3 w-3" />
+                  {started.time}
+                </div>
+              </div>
+              {ended && (
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Ended
+                  </div>
+                  <div className="text-base font-medium">{ended.date}</div>
+                  <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                    <Clock className="h-3 w-3" />
+                    {ended.time}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
+
+      {/* Tabs */}
+      <Tabs defaultValue="transcript" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="transcript" className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            Transcript
+          </TabsTrigger>
+          <TabsTrigger value="summary" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Summary
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="transcript" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Conversation Transcript</CardTitle>
+              <CardDescription>
+                {transcript.length} {transcript.length === 1 ? 'message' : 'messages'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TranscriptViewer turns={transcript} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="summary" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Session Summary</CardTitle>
+                  <CardDescription>
+                    AI-generated summary of the conversation
+                  </CardDescription>
+                </div>
+                {!summary && (
+                  <GenerateSummaryButton sessionId={sessionId} />
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {summary ? (
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-muted p-4">
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                      {summary.summary_text}
+                    </p>
+                  </div>
+                  {summary.summary_json && (
+                    <details className="rounded-lg bg-muted p-4">
+                      <summary className="cursor-pointer font-semibold text-sm mb-3 hover:text-foreground">
+                        Structured Summary (JSON)
+                      </summary>
+                      <pre className="mt-2 text-xs overflow-auto bg-background p-3 rounded border">
+                        {JSON.stringify(summary.summary_json, null, 2)}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No summary available</h3>
+                  <p className="text-muted-foreground text-sm mb-6 max-w-sm">
+                    Generate an AI summary to get insights from this conversation.
+                  </p>
+                  <GenerateSummaryButton sessionId={sessionId} />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

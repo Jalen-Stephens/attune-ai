@@ -1,4 +1,7 @@
 import type { TranscriptTurn } from '@/lib/types';
+import { Badge } from './ui/badge';
+import { cn } from '@/lib/utils';
+import { Clock } from 'lucide-react';
 
 interface TranscriptViewerProps {
   turns: TranscriptTurn[];
@@ -7,42 +10,54 @@ interface TranscriptViewerProps {
 export default function TranscriptViewer({ turns }: TranscriptViewerProps) {
   if (turns.length === 0) {
     return (
-      <div className="p-8 text-center text-gray-500">
-        No transcript available yet.
+      <div className="py-12 text-center">
+        <p className="text-muted-foreground">No transcript available yet.</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      {turns.map((turn) => (
-        <div
-          key={turn.id}
-          className={`p-4 rounded-lg ${
-            turn.role === 'user'
-              ? 'bg-blue-50 ml-8'
-              : 'bg-gray-50 mr-8'
-          }`}
-        >
-          <div className="flex items-start gap-3">
-            <span
-              className={`text-xs font-semibold uppercase px-2 py-1 rounded ${
-                turn.role === 'user'
-                  ? 'bg-blue-200 text-blue-800'
-                  : 'bg-gray-200 text-gray-800'
-              }`}
+      {turns.map((turn) => {
+        const isUser = turn.role === 'user';
+        return (
+          <div
+            key={turn.id}
+            className={cn(
+              'flex gap-4',
+              isUser ? 'flex-row-reverse' : 'flex-row'
+            )}
+          >
+            <div
+              className={cn(
+                'flex-1 rounded-lg border p-4 space-y-2',
+                isUser
+                  ? 'bg-primary/5 border-primary/20'
+                  : 'bg-muted/50 border-border'
+              )}
             >
-              {turn.role}
-            </span>
-            <p className="flex-1 text-gray-900">{turn.text}</p>
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant={isUser ? 'default' : 'secondary'}
+                  className="text-xs"
+                >
+                  {turn.role}
+                </Badge>
+                {turn.timestamp && (
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(turn.timestamp).toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm leading-relaxed">{turn.text}</p>
+            </div>
           </div>
-          {turn.timestamp && (
-            <p className="text-xs text-gray-500 mt-2 ml-20">
-              {new Date(turn.timestamp).toLocaleTimeString()}
-            </p>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
