@@ -28,12 +28,14 @@ export async function POST(request: NextRequest) {
       case 'transcript':
         if (payload.transcript || payload.message) {
           const transcript = payload.transcript || payload.message;
-          if (transcript?.text && transcript?.role) {
+          const t = transcript as { text?: string; content?: string; role?: 'user' | 'assistant'; timestamp?: string };
+          const text = t?.text ?? t?.content;
+          if (text && t?.role) {
             await insertTranscriptTurn(
               sessionId,
-              transcript.role as 'user' | 'assistant',
-              transcript.text,
-              transcript.timestamp || payload.timestamp
+              t.role as 'user' | 'assistant',
+              text,
+              t.timestamp || payload.timestamp
             );
           }
         }

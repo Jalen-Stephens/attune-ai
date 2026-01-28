@@ -1,4 +1,4 @@
-import { createServerClient } from './supabase/server';
+import { createServerClient } from '@/utils/supabase/server';
 import type { AgentProfile } from './types';
 
 // Hardcoded seed agent profiles matching AGENTS.md
@@ -58,7 +58,7 @@ Use reflective listening and structured reflection prompts.
 Do not provide therapy or diagnose mental health conditions. Encourage professional help when appropriate.`,
     rag_namespace: 'general_reflection',
     intake_questions: [
-      'What's on your mind today?',
+      "What's on your mind today?",
       'What would you like to reflect on?',
       'What support are you looking for?',
     ],
@@ -71,7 +71,7 @@ Do not provide therapy or diagnose mental health conditions. Encourage professio
  */
 export async function getAgents(): Promise<AgentProfile[]> {
   try {
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
     const { data, error } = await supabase
       .from('agent_profiles')
       .select('*')
@@ -93,7 +93,7 @@ export async function getAgents(): Promise<AgentProfile[]> {
  */
 export async function getAgentById(agentId: string): Promise<AgentProfile | null> {
   try {
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
     const { data, error } = await supabase
       .from('agent_profiles')
       .select('*')

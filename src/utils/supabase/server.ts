@@ -1,12 +1,11 @@
-
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createServerClient as createSupabaseServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
 
-export const createClient = (cookieStore: ReturnType<typeof cookies>) => {
-  return createServerClient(
+export const createClient = (cookieStore: Awaited<ReturnType<typeof cookies>>) => {
+  return createSupabaseServerClient(
     supabaseUrl!,
     supabaseKey!,
     {
@@ -27,3 +26,9 @@ export const createClient = (cookieStore: ReturnType<typeof cookies>) => {
     },
   );
 };
+
+/** Create a Supabase server client using the request cookie store. Use in Server Components, Route Handlers, and Server Actions. */
+export async function createServerClient() {
+  const cookieStore = await cookies();
+  return createClient(cookieStore);
+}

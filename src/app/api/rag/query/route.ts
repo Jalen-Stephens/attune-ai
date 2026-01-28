@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient } from '@/utils/supabase/server';
 import type { RagQueryResponse } from '@/lib/types';
 
 const RagQuerySchema = z.object({
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { agentId, query, topK } = RagQuerySchema.parse(body);
 
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
 
     // TODO: Implement vector search with pgvector
     // For now, return placeholder results based on simple text matching

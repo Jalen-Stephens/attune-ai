@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient } from '@/utils/supabase/server';
 
 const RagIngestSchema = z.object({
   agentId: z.string().min(1),
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { agentId, title, content, metadata } = RagIngestSchema.parse(body);
 
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
 
     // Insert document into rag_docs table
     // Note: embedding is left as NULL for now (will be populated when pgvector is enabled)

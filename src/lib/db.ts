@@ -1,12 +1,11 @@
-import { createServerClient } from './supabase/server';
+import { createServerClient } from '@/utils/supabase/server';
 import type { Session, TranscriptTurn, SessionSummary, AgentProfile } from './types';
-
-const supabase = createServerClient();
 
 /**
  * Create a new session for an agent
  */
 export async function createSession(agentId: string): Promise<string> {
+  const supabase = await createServerClient();
   const { data, error } = await supabase
     .from('sessions')
     .insert({
@@ -32,6 +31,7 @@ export async function insertTranscriptTurn(
   text: string,
   timestamp?: string
 ): Promise<void> {
+  const supabase = await createServerClient();
   const { error } = await supabase
     .from('transcript_turns')
     .insert({
@@ -50,6 +50,7 @@ export async function insertTranscriptTurn(
  * Mark a session as ended
  */
 export async function endSession(sessionId: string): Promise<void> {
+  const supabase = await createServerClient();
   const { error } = await supabase
     .from('sessions')
     .update({
@@ -71,6 +72,7 @@ export async function saveSummary(
   summaryText: string,
   summaryJson?: SessionSummary['summary_json']
 ): Promise<void> {
+  const supabase = await createServerClient();
   const { error } = await supabase
     .from('session_summaries')
     .upsert({
@@ -90,6 +92,7 @@ export async function saveSummary(
  * List all sessions with agent information
  */
 export async function listSessions(): Promise<Session[]> {
+  const supabase = await createServerClient();
   const { data, error } = await supabase
     .from('sessions')
     .select(`
@@ -124,6 +127,7 @@ export async function getSessionDetail(sessionId: string): Promise<{
   transcript: TranscriptTurn[];
   summary: SessionSummary | null;
 }> {
+  const supabase = await createServerClient();
   // Get session with agent info
   const { data: sessionData, error: sessionError } = await supabase
     .from('sessions')
