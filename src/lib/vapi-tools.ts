@@ -1,0 +1,149 @@
+/**
+ * Vapi Function Definitions
+ * 
+ * These are the function schemas that should be provided to Vapi
+ * so the agent can call our tools during conversations.
+ */
+
+export const VAPI_FUNCTION_DEFINITIONS = [
+  {
+    name: 'createOrUpdateIntake',
+    description: 'Save or update the user\'s intake information including reason for visit, symptoms, location, insurance, and preferences. Call this as you collect information from the user.',
+    parameters: {
+      type: 'object',
+      properties: {
+        reason_for_visit: {
+          type: 'string',
+          description: 'The main reason the user is seeking care (e.g., "skin rash", "chest pain", "headache")',
+        },
+        symptoms: {
+          type: 'string',
+          description: 'Detailed description of symptoms',
+        },
+        duration: {
+          type: 'string',
+          description: 'How long the symptoms have been present (e.g., "3 days", "2 weeks", "chronic")',
+        },
+        urgency_flags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of urgency indicators if present (e.g., ["severe_pain", "emergency"])',
+        },
+        location_zip: {
+          type: 'string',
+          description: 'User\'s zip code for finding nearby providers',
+        },
+        location_city: {
+          type: 'string',
+          description: 'User\'s city',
+        },
+        location_state: {
+          type: 'string',
+          description: 'User\'s state (2-letter code)',
+        },
+        insurance_provider: {
+          type: 'string',
+          description: 'User\'s insurance provider name (e.g., "Blue Cross", "Aetna")',
+        },
+        insurance_plan: {
+          type: 'string',
+          description: 'User\'s specific insurance plan name if known',
+        },
+        appointment_preference: {
+          type: 'string',
+          enum: ['in-person', 'telehealth', 'either'],
+          description: 'User\'s preference for appointment type',
+        },
+        user_email: {
+          type: 'string',
+          description: 'User\'s email address for sending referral summary',
+        },
+        consent_to_use_info: {
+          type: 'boolean',
+          description: 'Whether user consents to use their information to find specialists',
+        },
+        consent_to_email: {
+          type: 'boolean',
+          description: 'Whether user consents to receive email summary with referral options',
+        },
+        recommended_specialty: {
+          type: 'string',
+          description: 'The type of specialist recommended based on the user\'s condition (e.g., "dermatologist", "cardiologist", "neurologist")',
+        },
+      },
+      required: ['user_email'],
+    },
+  },
+  {
+    name: 'lookupSpecialists',
+    description: 'Search for specialists near the user matching their intake information (location, insurance, specialty). Call this after collecting intake information and getting consent. Returns up to 3 best-matched providers.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'sendReferralEmail',
+    description: 'Send an email summary with referral options to the user. Call this after presenting referral options or at the end of the conversation if user consented to email.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+];
+
+/**
+ * Enhanced agent system prompt for screening + referral workflow
+ */
+export function getScreeningAgentPrompt(basePrompt: string): string {
+  return `${basePrompt}
+
+## Screening & Referral Workflow
+
+You are now equipped to help users with screening and specialist referrals. Follow this workflow:
+
+### 1. Initial Screening
+- Greet the user warmly and ask what brings them here today
+- Collect key information:
+  * Main reason for visit / symptoms
+  * Duration of symptoms
+  * Location (zip code, city, state)
+  * Insurance information
+  * Appointment preference (in-person, telehealth, or either)
+  * Email address for referral summary
+- Ask for consent to use their information to find specialists
+- Ask for consent to email them a referral summary
+
+### 2. Safety & Disclaimers
+- IMPORTANT: You do NOT provide medical diagnosis or treatment advice
+- If user mentions severe symptoms (chest pain, difficulty breathing, severe pain, etc.), acknowledge their concern and encourage them to seek immediate emergency care
+- Always include: "This is for screening and referral purposes only, not medical advice"
+
+### 3. Specialist Recommendation
+- Based on the user's reason for visit and symptoms, recommend a type of specialist (e.g., "dermatologist", "cardiologist", "neurologist")
+- Use the createOrUpdateIntake function to save this information as you collect it
+- Once you have location, insurance, and consent, call lookupSpecialists to find providers
+
+### 4. Present Referrals
+- Present 1-3 providers with:
+  * Name and credentials
+  * Specialty
+  * Location and distance
+  * Next available appointment (if known)
+  * Why you're recommending them (match reasons)
+  * Booking link
+- If lookup fails or returns no results, reassure the user: "I'll email you options within a few minutes"
+
+### 5. Email Summary
+- At the end of the conversation (or when user requests it), call sendReferralEmail
+- Confirm that they will receive an email with all referral options
+
+### Function Usage
+- Call createOrUpdateIntake incrementally as you collect information (don't wait until the end)
+- Call lookupSpecialists only after you have: location (zip), insurance, and consent_to_use_info = true
+- Call sendReferralEmail at the end if consent_to_email = true
+
+Remember: Be supportive, non-judgmental, and clear about limitations. Never diagnose or provide medical advice.`;
+}

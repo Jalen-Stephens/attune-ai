@@ -1,5 +1,5 @@
 import { createServerClient } from '@/utils/supabase/server';
-import type { Session, TranscriptTurn, SessionSummary, AgentProfile } from './types';
+import type { Session, TranscriptTurn, SessionSummary, AgentProfile, Intake, Referral, Event, EmailSummary } from './types';
 
 /**
  * Create a new session for an agent
@@ -185,4 +185,289 @@ export async function getSessionDetail(sessionId: string): Promise<{
     transcript: transcriptData || [],
     summary: summaryData || null,
   };
+}
+
+/**
+ * Create or update session with Vapi call ID (for idempotency)
+ */
+export async function createOrUpdateSession(
+  agentId: string,
+  vapiCallId: string,
+  userEmail?: string,
+  userPhone?: string,
+  channel: 'voice' | 'chat' | 'unknown' = 'voice'
+): Promise<string> {
+  const supabase = await createServerClient();
+  
+  // Check if session with this Vapi call ID already exists
+  const { data: existing } = await supabase
+    .from('sessions')
+    .select('id')
+    .eq('vapi_call_id', vapiCallId)
+    .single();
+  
+  if (existing) {
+    return existing.id;
+  }
+  
+  // Create new session
+  const { data, error } = await supabase
+    .from('sessions')
+    .insert({
+      agent_id: agentId,
+      status: 'active',
+      vapi_call_id: vapiCallId,
+      user_email: userEmail || null,
+      user_phone: userPhone || null,
+      channel,
+    })
+    .select('id')
+    .single();
+  
+  if (error) {
+    throw new Error(`Failed to create session: ${error.message}`);
+  }
+  
+  return data.id;
+}
+
+/**
+ * Create or update intake
+ */
+export async function createOrUpdateIntake(
+  sessionId: string,
+  intakeData: Partial<Intake> & { user_email: string }
+): Promise<Intake> {
+  const supabase = await createServerClient();
+  
+  const { data, error } = await supabase
+    .from('intakes')
+    .upsert({
+      session_id: sessionId,
+      ...intakeData,
+      updated_at: new Date().toISOString(),
+    }, {
+      onConflict: 'session_id',
+    })
+    .select()
+    .single();
+  
+  if (error) {
+    throw new Error(`Failed to create/update intake: ${error.message}`);
+  }
+  
+  return data;
+}
+
+/**
+ * Get intake by session ID
+ */
+export async function getIntake(sessionId: string): Promise<Intake | null> {
+  const supabase = await createServerClient();
+  
+  const { data, error } = await supabase
+    .from('intakes')
+    .select('*')
+    .eq('session_id', sessionId)
+    .single();
+  
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null;
+    }
+    throw new Error(`Failed to get intake: ${error.message}`);
+  }
+  
+  return data;
+}
+
+/**
+ * Save referrals for a session
+ */
+export async function saveReferrals(
+  sessionId: string,
+  referrals: Omit<Referral, 'id' | 'created_at'>[]
+): Promise<Referral[]> {
+  const supabase = await createServerClient();
+  
+  // Delete existing referrals for this session
+  await supabase
+    .from('referrals')
+    .delete()
+    .eq('session_id', sessionId);
+  
+  // Insert new referrals
+  const { data, error } = await supabase
+    .from('referrals')
+    .insert(referrals.map(ref => ({
+      ...ref,
+      session_id: sessionId,
+    })))
+    .select();
+  
+  if (error) {
+    throw new Error(`Failed to save referrals: ${error.message}`);
+  }
+  
+  return data;
+}
+
+/**
+ * Get referrals for a session
+ */
+export async function getReferrals(sessionId: string): Promise<Referral[]> {
+  const supabase = await createServerClient();
+  
+  const { data, error } = await supabase
+    .from('referrals')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('rank', { ascending: true });
+  
+  if (error) {
+    throw new Error(`Failed to get referrals: ${error.message}`);
+  }
+  
+  return data || [];
+}
+
+/**
+ * Log an event
+ */
+export async function logEvent(
+  sessionId: string,
+  eventType: string,
+  payload?: Record<string, any>
+): Promise<void> {
+  const supabase = await createServerClient();
+  
+  const { error } = await supabase
+    .from('events')
+    .insert({
+      session_id: sessionId,
+      event_type: eventType,
+      payload_json: payload || null,
+    });
+  
+  if (error) {
+    console.error('Failed to log event:', error);
+    // Don't throw - event logging should not break the flow
+  }
+}
+
+/**
+ * Create or get email summary (idempotent)
+ */
+export async function createOrGetEmailSummary(
+  sessionId: string,
+  toEmail: string,
+  subject: string,
+  htmlContent: string,
+  textContent: string,
+  providerOptions: Referral[]
+): Promise<EmailSummary> {
+  const supabase = await createServerClient();
+  
+  const idempotencyKey = `email_${sessionId}`;
+  
+  // Check if email summary already exists
+  const { data: existing } = await supabase
+    .from('email_summaries')
+    .select('*')
+    .eq('idempotency_key', idempotencyKey)
+    .single();
+  
+  if (existing) {
+    return existing;
+  }
+  
+  // Create new email summary
+  const { data, error } = await supabase
+    .from('email_summaries')
+    .insert({
+      session_id: sessionId,
+      to_email: toEmail,
+      subject,
+      html_content: htmlContent,
+      text_content: textContent,
+      provider_options_json: providerOptions,
+      idempotency_key: idempotencyKey,
+      status: 'pending',
+    })
+    .select()
+    .single();
+  
+  if (error) {
+    throw new Error(`Failed to create email summary: ${error.message}`);
+  }
+  
+  return data;
+}
+
+/**
+ * Update email summary status
+ */
+export async function updateEmailSummaryStatus(
+  idempotencyKey: string,
+  status: 'sent' | 'failed' | 'retrying',
+  errorMessage?: string
+): Promise<void> {
+  const supabase = await createServerClient();
+  
+  const updateData: any = {
+    status,
+    updated_at: new Date().toISOString(),
+  };
+  
+  if (status === 'sent') {
+    updateData.sent_at = new Date().toISOString();
+  }
+  
+  if (errorMessage) {
+    updateData.error_message = errorMessage;
+  }
+  
+  if (status === 'retrying' || status === 'failed') {
+    // Increment retry count
+    const { data: existing } = await supabase
+      .from('email_summaries')
+      .select('retry_count')
+      .eq('idempotency_key', idempotencyKey)
+      .single();
+    
+    if (existing) {
+      updateData.retry_count = (existing.retry_count || 0) + 1;
+    }
+  }
+  
+  const { error } = await supabase
+    .from('email_summaries')
+    .update(updateData)
+    .eq('idempotency_key', idempotencyKey);
+  
+  if (error) {
+    throw new Error(`Failed to update email summary: ${error.message}`);
+  }
+}
+
+/**
+ * Get email summary by idempotency key
+ */
+export async function getEmailSummary(idempotencyKey: string): Promise<EmailSummary | null> {
+  const supabase = await createServerClient();
+  
+  const { data, error } = await supabase
+    .from('email_summaries')
+    .select('*')
+    .eq('idempotency_key', idempotencyKey)
+    .single();
+  
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null;
+    }
+    throw new Error(`Failed to get email summary: ${error.message}`);
+  }
+  
+  return data;
 }

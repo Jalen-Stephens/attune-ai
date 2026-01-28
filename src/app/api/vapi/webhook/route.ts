@@ -1,32 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { insertTranscriptTurn, endSession } from '@/lib/db';
+import { insertTranscriptTurn, endSession, createOrUpdateSession, logEvent } from '@/lib/db';
+import { verifyVapiSignature } from '@/lib/webhook-verification';
+import { 
+  createOrUpdateIntakeTool, 
+  lookupSpecialistsTool, 
+  sendReferralEmailTool 
+} from '@/lib/agent-tools';
 import type { VapiWebhookEvent } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
   try {
-    const payload: VapiWebhookEvent = await request.json();
+    const body = await request.text();
+    const payload: VapiWebhookEvent = JSON.parse(body);
 
-    // TODO: Verify webhook signature
-    // const signature = request.headers.get('x-vapi-signature');
-    // if (!verifySignature(payload, signature)) {
-    //   return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-    // }
+    // Verify webhook signature
+    const signature = request.headers.get('x-vapi-signature');
+    if (!verifyVapiSignature(body, signature)) {
+      console.warn('Invalid webhook signature');
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    }
 
-    // Extract session ID from payload
-    // Vapi webhook payloads may include session metadata or call ID
-    // For now, we'll need to store the mapping between Vapi call ID and our session ID
-    // This is a simplified version - in production, you'd maintain this mapping
-    const sessionId = payload.call?.id || (payload as any).sessionId;
-
-    if (!sessionId) {
-      console.warn('No session ID found in webhook payload:', payload);
+    // Extract Vapi call ID
+    const vapiCallId = payload.call?.id || (payload as any).callId || (payload as any).call_id;
+    
+    if (!vapiCallId) {
+      console.warn('No Vapi call ID found in webhook payload:', payload);
       return NextResponse.json({ received: true }, { status: 200 });
+    }
+
+    // Get or create session ID from Vapi call ID mapping
+    let sessionId: string;
+    try {
+      sessionId = await createOrUpdateSession(
+        (payload as any).agentId || 'general_reflection', // Default agent
+        vapiCallId,
+        (payload as any).userEmail || (payload as any).user_email,
+        (payload as any).userPhone || (payload as any).user_phone,
+        'voice'
+      );
+    } catch (error) {
+      console.error('Error creating/updating session:', error);
+      return NextResponse.json({ received: true, error: 'Session creation failed' }, { status: 200 });
     }
 
     // Handle different event types
     switch (payload.type) {
+      case 'call-started':
+        // Session already created above, just log
+        await logEvent(sessionId, 'call_started', {
+          vapi_call_id: vapiCallId,
+        });
+        break;
+
       case 'transcript':
-        if (payload.transcript || payload.message) {
+        if (sessionId && (payload.transcript || payload.message)) {
           const transcript = payload.transcript || payload.message;
           const t = transcript as { text?: string; content?: string; role?: 'user' | 'assistant'; timestamp?: string };
           const text = t?.text ?? t?.content;
@@ -41,12 +68,71 @@ export async function POST(request: NextRequest) {
         }
         break;
 
-      case 'call-ended':
-        await endSession(sessionId);
+      case 'function-call':
+        // Handle agent function calls
+        if (sessionId && (payload as any).functionCall) {
+          const functionCall = (payload as any).functionCall;
+          const functionName = functionCall.name;
+          const functionArgs = functionCall.arguments || {};
+
+          let result: any = { success: false, message: 'Unknown function' };
+
+          try {
+            switch (functionName) {
+              case 'createOrUpdateIntake':
+                result = await createOrUpdateIntakeTool(sessionId, functionArgs);
+                break;
+              
+              case 'lookupSpecialists':
+                result = await lookupSpecialistsTool(sessionId);
+                break;
+              
+              case 'sendReferralEmail':
+                result = await sendReferralEmailTool(sessionId);
+                break;
+              
+              default:
+                console.warn('Unknown function call:', functionName);
+            }
+
+            await logEvent(sessionId, 'function_call', {
+              function_name: functionName,
+              success: result.success,
+            });
+
+            // Return result to Vapi (they will handle the response format)
+            return NextResponse.json({
+              result: result.message,
+              success: result.success,
+              data: result,
+            });
+          } catch (error) {
+            console.error('Error handling function call:', error);
+            await logEvent(sessionId, 'function_call_error', {
+              function_name: functionName,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+            
+            return NextResponse.json({
+              result: 'An error occurred processing your request.',
+              success: false,
+            });
+          }
+        }
         break;
 
-      case 'call-started':
-        // Session already created, just acknowledge
+      case 'call-ended':
+        if (sessionId) {
+          await endSession(sessionId);
+          
+          // Auto-send referral email if intake is complete and consented
+          try {
+            await sendReferralEmailTool(sessionId);
+          } catch (error) {
+            console.error('Error auto-sending referral email:', error);
+            // Don't fail the webhook if email fails
+          }
+        }
         break;
 
       default:
