@@ -10,6 +10,8 @@ import {
   Menu,
   X,
   Home,
+  UserCheck,
+  Settings,
 } from 'lucide-react';
 import { Button } from './ui/button';
 
@@ -20,9 +22,10 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { title: 'Home', href: '/', icon: Home },
-  { title: 'Agents', href: '/agents', icon: MessageSquare },
-  { title: 'Sessions', href: '/dashboard/sessions', icon: LayoutDashboard },
+  { title: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { title: 'Conversations', href: '/dashboard/sessions', icon: MessageSquare },
+  { title: 'Referrals', href: '/referrals', icon: UserCheck },
+  { title: 'Settings', href: '/settings', icon: Settings },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -100,7 +103,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="container mx-auto max-w-7xl px-4 py-8 lg:px-8">
+        <main className="container mx-auto max-w-5xl px-4 py-8 lg:px-8">
           {children}
         </main>
       </div>

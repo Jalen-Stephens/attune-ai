@@ -1,4 +1,4 @@
-import { getSessionDetail } from '@/lib/db';
+import { getSessionDetail, getIntake, getReferrals } from '@/lib/db';
 import TranscriptViewer from '@/components/TranscriptViewer';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Calendar, Clock, MessageSquare, FileText } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, MessageSquare, FileText, UserCheck, ArrowRight } from 'lucide-react';
 
 interface PageProps {
   params: Promise<{ sessionId: string }>;
@@ -16,9 +16,13 @@ interface PageProps {
 export default async function SessionDetailPage({ params }: PageProps) {
   const { sessionId } = await params;
   
-  let sessionData;
+  let sessionData, intake, referrals;
   try {
-    sessionData = await getSessionDetail(sessionId);
+    [sessionData, intake, referrals] = await Promise.all([
+      getSessionDetail(sessionId),
+      getIntake(sessionId),
+      getReferrals(sessionId),
+    ]);
   } catch (error) {
     notFound();
   }
@@ -65,6 +69,54 @@ export default async function SessionDetailPage({ params }: PageProps) {
           {session.status}
         </Badge>
       </div>
+
+      {/* Quick Actions */}
+      {(intake || referrals.length > 0) && (
+        <div className="grid md:grid-cols-2 gap-4">
+          {intake && (
+            <Card className="hover:border-primary/50 transition-colors">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <UserCheck className="h-5 w-5" />
+                  Screening Summary
+                </CardTitle>
+                <CardDescription>
+                  View what we collected during your conversation
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href={`/dashboard/sessions/${sessionId}/screening`}>
+                    View Screening
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+          {referrals.length > 0 && (
+            <Card className="hover:border-primary/50 transition-colors">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <UserCheck className="h-5 w-5" />
+                  Specialist Referrals
+                </CardTitle>
+                <CardDescription>
+                  {referrals.length} {referrals.length === 1 ? 'specialist' : 'specialists'} found
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild variant="default" className="w-full">
+                  <Link href={`/referrals/${sessionId}`}>
+                    View Referrals
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Info Card */}
       <Card>

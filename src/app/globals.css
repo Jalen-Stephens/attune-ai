@@ -31,3 +31,14 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  @media print {
+    .print\:break-inside-avoid {
+      break-inside: avoid;
+    }
+    .print\:hidden {
+      display: none;
+    }
+  }
+}

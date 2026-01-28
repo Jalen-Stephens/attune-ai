@@ -126,14 +126,16 @@ export default async function SessionsPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          asChild
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Link href={`/dashboard/sessions/${session.id}`}>View</Link>
-                        </Button>
+                        <div className="flex items-center gap-2 justify-end">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            asChild
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Link href={`/dashboard/sessions/${session.id}`}>View</Link>
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
