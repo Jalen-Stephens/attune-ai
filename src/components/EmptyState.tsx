@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import Link from 'next/link';
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
@@ -9,7 +10,7 @@ interface EmptyStateProps {
   description: string;
   action?: {
     label: string;
-    onClick: () => void;
+    onClick?: () => void;
     href?: string;
   };
   className?: string;
@@ -31,14 +32,19 @@ export function EmptyState({
           {description}
         </p>
         {action && (
-          <Button
-            variant="default"
-            onClick={action.onClick}
-            asChild={!!action.href}
-            className="w-full sm:w-auto"
-          >
-            {action.href ? <a href={action.href}>{action.label}</a> : action.label}
-          </Button>
+          action.href ? (
+            <Button variant="default" asChild className="w-full sm:w-auto">
+              <Link href={action.href}>{action.label}</Link>
+            </Button>
+          ) : (
+            <Button
+              variant="default"
+              onClick={action.onClick}
+              className="w-full sm:w-auto"
+            >
+              {action.label}
+            </Button>
+          )
         )}
       </CardContent>
     </Card>

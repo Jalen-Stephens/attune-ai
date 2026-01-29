@@ -1,13 +1,13 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { AppShell } from '@/components/AppShell';
+import { LayoutSwitcher } from '@/components/LayoutSwitcher';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'Attune AI',
-  description: 'Voice- and text-based AI support platform',
+  description: 'Voice- and text-based AI support platform with specialized agents for different support domains.',
 };
 
 export default function RootLayout({
@@ -18,7 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <AppShell>{children}</AppShell>
+        <LayoutSwitcher>{children}</LayoutSwitcher>
       </body>
     </html>
   );

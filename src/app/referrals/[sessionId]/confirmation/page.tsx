@@ -131,7 +131,7 @@ export default async function EmailConfirmationPage({ params }: PageProps) {
                 <div className="text-sm text-muted-foreground">
                   {emailSent
                     ? 'Your referral summary has been sent. Check your inbox (and spam folder).'
-                    : 'We'll send your referral summary shortly. Check your inbox (and spam folder).'}
+                    : "We'll send your referral summary shortly. Check your inbox (and spam folder)."}
                 </div>
               </div>
             </div>

@@ -22,7 +22,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { title: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { title: 'Conversations', href: '/dashboard/sessions', icon: MessageSquare },
   { title: 'Referrals', href: '/referrals', icon: UserCheck },
   { title: 'Settings', href: '/settings', icon: Settings },
@@ -63,8 +63,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="p-4 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href || 
-              (item.href !== '/' && pathname?.startsWith(item.href));
+            const isActive = pathname === item.href ||
+              (item.href !== '/dashboard' && pathname?.startsWith(item.href));
             return (
               <Link
                 key={item.href}

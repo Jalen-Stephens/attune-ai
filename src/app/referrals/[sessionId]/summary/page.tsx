@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ReferralCard } from '@/components/ReferralCard';
 import Link from 'next/link';
-import { ArrowLeft, Shield, Print } from 'lucide-react';
+import { ArrowLeft, Shield, Printer } from 'lucide-react';
 
 interface PageProps {
   params: Promise<{ sessionId: string }>;
@@ -55,7 +55,7 @@ export default async function OnlineSummaryPage({ params }: PageProps) {
               }
             }}
           >
-            <Print className="h-4 w-4 mr-2" />
+            <Printer className="h-4 w-4 mr-2" />
             Print
           </Button>
         </div>
