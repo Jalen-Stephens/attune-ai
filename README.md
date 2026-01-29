@@ -64,6 +64,7 @@ The schema includes:
 - `transcript_turns` - Individual transcript entries
 - `session_summaries` - Post-session summaries
 - `rag_docs` - RAG knowledge documents (with placeholder for embeddings)
+- `profiles` - User profiles (see `supabase/migrations/001_profiles.sql` and `supabase/README_MIGRATIONS.md`)
 
 ### 4. Run Development Server
 

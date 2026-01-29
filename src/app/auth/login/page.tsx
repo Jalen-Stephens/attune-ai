@@ -10,13 +10,18 @@ export const metadata: Metadata = {
   description: 'Log in to your Attune AI account.',
 };
 
-export default async function LoginPage() {
+type Props = { searchParams: Promise<{ redirectTo?: string }> };
+
+export default async function LoginPage({ searchParams }: Props) {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (user) {
-    redirect('/dashboard');
+    const { redirectTo } = await searchParams;
+    redirect(redirectTo && redirectTo.startsWith('/') ? redirectTo : '/dashboard');
   }
+
+  const { redirectTo } = await searchParams;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -30,7 +35,7 @@ export default async function LoginPage() {
               Sign in to your Attune AI account
             </p>
           </div>
-          <LoginForm />
+          <LoginForm redirectTo={redirectTo} />
         </div>
       </main>
 

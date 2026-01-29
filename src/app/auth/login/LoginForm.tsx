@@ -9,12 +9,17 @@ import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 
-export function LoginForm() {
+type LoginFormProps = { redirectTo?: string };
+
+export function LoginForm({ redirectTo }: LoginFormProps) {
   const router = useRouter();
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
+
+  const destination =
+    redirectTo && redirectTo.startsWith('/') ? redirectTo : '/dashboard';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,7 +37,7 @@ export function LoginForm() {
       }
 
       if (data.user) {
-        router.push('/dashboard');
+        router.push(destination);
         router.refresh();
       }
     } catch {

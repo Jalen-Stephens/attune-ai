@@ -1,5 +1,5 @@
 import { createServerClient } from '@/utils/supabase/server';
-import type { Session, TranscriptTurn, SessionSummary, AgentProfile, Intake, Referral, Event, EmailSummary } from './types';
+import type { Session, TranscriptTurn, SessionSummary, AgentProfile, Intake, Referral, Event, EmailSummary, UserProfile } from './types';
 
 /**
  * Create a new session for an agent
@@ -469,5 +469,73 @@ export async function getEmailSummary(idempotencyKey: string): Promise<EmailSumm
     throw new Error(`Failed to get email summary: ${error.message}`);
   }
   
+  return data;
+}
+
+// ——— User profiles (public.profiles) ———
+
+/**
+ * Get profile by user id. Returns null if not found.
+ */
+export async function getProfile(userId: string): Promise<UserProfile | null> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw new Error(`Failed to get profile: ${error.message}`);
+  }
+  return data;
+}
+
+/**
+ * Ensure a profile row exists for the user (upsert by id).
+ * Use after signup or on first visit to settings.
+ */
+export async function upsertProfile(
+  userId: string,
+  email: string | null
+): Promise<UserProfile> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase
+    .from('profiles')
+    .upsert(
+      {
+        id: userId,
+        email: email ?? null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    )
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to upsert profile: ${error.message}`);
+  return data;
+}
+
+/**
+ * Update profile fields. Only updates provided fields.
+ */
+export async function updateProfile(
+  userId: string,
+  updates: Partial<Pick<UserProfile, 'full_name' | 'display_name' | 'avatar_url' | 'email'>>
+): Promise<UserProfile> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId)
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to update profile: ${error.message}`);
   return data;
 }
