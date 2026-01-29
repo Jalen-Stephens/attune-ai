@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerClient } from '@/utils/supabase/server';
 import { getSessionDetail } from '@/lib/db';
+import { getAgentById } from '@/lib/agents';
 import { getEmbedding } from '@/lib/rag/embeddings';
 import {
   buildRetrievalQueryFromContext,
@@ -37,7 +38,8 @@ export async function POST(
 
     const supabase = await createServerClient();
     const { session, transcript, summary } = await getSessionDetail(sessionId);
-    const agent = session.agent;
+    // Resolve agent from DB join or in-memory list (DB join can be null if agent_profiles has RLS)
+    const agent = session.agent ?? (session.agent_id ? getAgentById(session.agent_id) : null);
     if (!agent?.id || !agent.system_prompt) {
       return NextResponse.json(
         { error: 'Session or agent not found' },

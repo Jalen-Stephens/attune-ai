@@ -2,15 +2,19 @@ import { createServerClient } from '@/utils/supabase/server';
 import type { Session, TranscriptTurn, SessionSummary, AgentProfile, Intake, Referral, Event, EmailSummary, UserProfile } from './types';
 
 /**
- * Create a new session for an agent
+ * Create a new session for an agent.
+ * Sets user_id when the caller is authenticated so RLS allows the insert.
  */
 export async function createSession(agentId: string): Promise<string> {
   const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   const { data, error } = await supabase
     .from('sessions')
     .insert({
       agent_id: agentId,
       status: 'active',
+      ...(user?.id && { user_id: user.id }),
     })
     .select('id')
     .single();

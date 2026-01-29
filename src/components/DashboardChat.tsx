@@ -25,9 +25,12 @@ export interface DashboardChatProps {
   userName?: string;
 }
 
+const DEFAULT_CHAT_AGENT_ID = 'general_reflection';
+
 export default function DashboardChat({ userName = 'there' }: DashboardChatProps) {
   const router = useRouter();
   const [turns, setTurns] = React.useState<ConversationTurn[]>([]);
+  const [sessionId, setSessionId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -52,10 +55,26 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
     setTurns((prev) => [...prev, userTurn]);
 
     try {
-      const res = await fetch('/api/recommendations', {
+      let currentSessionId = sessionId;
+      if (!currentSessionId) {
+        const startRes = await fetch('/api/sessions/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId: DEFAULT_CHAT_AGENT_ID }),
+        });
+        if (!startRes.ok) {
+          const startData = await startRes.json();
+          throw new Error(startData.error ?? 'Failed to start conversation');
+        }
+        const startData = await startRes.json();
+        currentSessionId = startData.sessionId;
+        setSessionId(currentSessionId);
+      }
+
+      const res = await fetch(`/api/sessions/${currentSessionId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: message }),
+        body: JSON.stringify({ message }),
       });
 
       const data = await res.json();
@@ -64,10 +83,30 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
         throw new Error(data.error ?? 'Something went wrong');
       }
 
+      const assistantData: AssistantResponseData = {
+        assistant_message: data.message,
+        suggested_agents: (data.suggestedAgents ?? []).map((a: { agent_id: string; name: string; reason: string }) => ({
+          slug: a.agent_id,
+          name: a.name,
+          reason: a.reason,
+          tags: [],
+        })),
+        suggested_resources: (data.resources ?? []).map((r: { id: string; title: string; snippet: string; url?: string; type: string; reason: string }) => ({
+          id: r.id,
+          slug: r.id,
+          title: r.title,
+          snippet: r.snippet,
+          url: r.url,
+          type: r.type,
+          reason: r.reason,
+        })),
+        safety: { is_crisis: false, message: '' },
+      };
+
       const assistantTurn: ConversationTurn = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        assistantData: data as AssistantResponseData,
+        assistantData,
       };
       setTurns((prev) => [...prev, assistantTurn]);
     } catch (err) {

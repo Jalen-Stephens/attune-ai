@@ -32,7 +32,7 @@ export interface ChatPromptInput {
 
 const STRUCTURED_RESPONSE_SCHEMA = `You must respond with valid JSON only, no markdown or extra text. Schema:
 {
-  "message": "string (your reply to the user)",
+  "message": "string (brief, conversational reply: 1-4 sentences; directly address what the user said; do not lecture or dump long text)",
   "resources": [{"id": "string", "title": "string", "snippet": "string", "url": "string | null", "type": "string", "reason": "string"}],
   "suggested_agents": [{"agent_id": "string", "name": "string", "reason": "string", "confidence": number 0-1}]
 }`;
@@ -58,6 +58,8 @@ export function buildRetrievalQueryFromContext(context: ChatContextInput): strin
 export function buildSystemPrompt(input: ChatPromptInput): string {
   const { systemPrompt, disclaimer, crisisDetected, crisisMessage } = input;
   let system = systemPrompt + '\n\n' + disclaimer;
+  system +=
+    '\n\nKeep your reply brief and conversational (typically 1-4 sentences). Directly address what the user said; do not lecture or dump long blocks of text. Use retrieved context only to briefly support your reply.';
   if (crisisDetected && crisisMessage) {
     system +=
       '\n\nIf the user has expressed a crisis (e.g. self-harm, suicide), respond with empathy and include the following safety message. Do not ignore it: ' +
@@ -72,7 +74,7 @@ export function buildUserPrompt(input: ChatPromptInput): string {
   const lines: string[] = [];
 
   if (retrievedChunks.length > 0) {
-    lines.push('## Retrieved context (use to inform your reply and to suggest resources)');
+    lines.push('## Retrieved context (use briefly to support your reply; do not repeat long passages)');
     retrievedChunks.forEach((chunk, i) => {
       lines.push(`[${i + 1}] ${chunk.content}`);
     });
@@ -88,7 +90,7 @@ export function buildUserPrompt(input: ChatPromptInput): string {
   lines.push(
     crisisDetected
       ? 'The user may be in crisis. Include the safety message and suggest 988 / professional help. Still respond with valid JSON.'
-      : 'Respond with valid JSON only (message, resources, suggested_agents).'
+      : 'Reply briefly and directly to the user. Respond with valid JSON only (message, resources, suggested_agents).'
   );
 
   return lines.join('\n');
