@@ -11,6 +11,37 @@ export interface UserProfile {
   updated_at?: string;
 }
 
+/** Specialty category for directory/filtering */
+export type AgentSpecialtyCategory =
+  | 'Anxiety & Panic'
+  | 'Depression & Mood'
+  | 'ADHD & Executive Functioning'
+  | 'Trauma & PTSD'
+  | 'OCD'
+  | 'Sleep & Insomnia'
+  | 'Stress & Burnout'
+  | 'Anger & Emotional Regulation'
+  | 'Grief & Loss'
+  | 'Relationships & Couples'
+  | 'Family & Parenting'
+  | 'Addiction & Recovery'
+  | 'Eating & Body Image'
+  | 'Social Anxiety & Confidence'
+  | 'Work & Career'
+  | "Men's Mental Health"
+  | "Women's Mental Health"
+  | 'LGBTQ+ Affirming'
+  | 'Chronic Illness Coping'
+  | 'Mindfulness & Meditation'
+  | 'General Reflection'
+  | 'Motivation & Habits'
+  | 'Communication'
+  | 'Boundaries & Assertiveness'
+  | 'Self-Esteem & Self-Compassion';
+
+/** Optional intensity / style for filtering */
+export type AgentIntensity = 'gentle' | 'structured' | 'direct';
+
 export interface AgentProfile {
   id: string;
   name: string;
@@ -19,6 +50,18 @@ export interface AgentProfile {
   rag_namespace: string;
   intake_questions?: string[];
   created_at?: string;
+  /** Directory UX: primary specialty category */
+  specialtyCategory?: AgentSpecialtyCategory;
+  /** Tags for filter chips (e.g. CBT, Anxiety, Couples) */
+  tags?: string[];
+  /** Short "good for" bullets for detail page */
+  recommendedFor?: string[];
+  /** Short disclaimer (e.g. not for emergencies) */
+  disclaimer?: string;
+  /** Optional style/intensity */
+  intensity?: AgentIntensity;
+  /** Optional emoji or initials for list avatar */
+  icon?: string;
 }
 
 export interface Session {

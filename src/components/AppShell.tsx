@@ -16,6 +16,7 @@ import {
   CreditCard,
   Settings,
   LogOut,
+  Bot,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
@@ -28,6 +29,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { title: 'Agents', href: '/agents', icon: Bot },
   { title: 'Conversations', href: '/dashboard/sessions', icon: MessageSquare },
   { title: 'Referrals', href: '/referrals', icon: UserCheck },
 ];

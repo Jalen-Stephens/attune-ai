@@ -6,9 +6,12 @@ import { Phone } from 'lucide-react';
 
 interface StartSessionButtonProps {
   agentId: string;
+  /** Inline/list use: single button, no note */
+  compact?: boolean;
+  className?: string;
 }
 
-export default function StartSessionButton({ agentId }: StartSessionButtonProps) {
+export default function StartSessionButton({ agentId, compact, className }: StartSessionButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,15 +34,29 @@ export default function StartSessionButton({ agentId }: StartSessionButtonProps)
       }
 
       const data = await response.json();
-      
-      // TODO: Integrate Vapi client SDK to initiate the call
-      // For now, just redirect to the session detail page
       window.location.href = `/dashboard/sessions/${data.sessionId}`;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setLoading(false);
     }
   };
+
+  if (compact) {
+    return (
+      <div className={className}>
+        <Button
+          onClick={handleStartSession}
+          disabled={loading}
+          size="sm"
+          className="shrink-0"
+        >
+          <Phone className="h-4 w-4 mr-1.5" />
+          {loading ? 'Starting…' : 'Start'}
+        </Button>
+        {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

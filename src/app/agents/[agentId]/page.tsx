@@ -5,7 +5,8 @@ import StartSessionButton from './StartSessionButton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, FileText, HelpCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ArrowLeft, FileText, HelpCircle, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface PageProps {
   params: Promise<{ agentId: string }>;
@@ -55,6 +56,37 @@ export default async function AgentDetailPage({ params }: PageProps) {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
+          {(agent.specialtyCategory || (agent.tags && agent.tags.length > 0)) && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-wrap gap-2">
+                  {agent.specialtyCategory && (
+                    <Badge variant="secondary">{agent.specialtyCategory}</Badge>
+                  )}
+                  {agent.tags?.map((tag) => (
+                    <Badge key={tag} variant="outline">{tag}</Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {agent.recommendedFor && agent.recommendedFor.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
+                  Good for
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="list-disc list-inside space-y-1.5 text-sm text-muted-foreground">
+                  {agent.recommendedFor.map((item, idx) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader>
               <CardTitle>About this Agent</CardTitle>
@@ -81,6 +113,16 @@ export default async function AgentDetailPage({ params }: PageProps) {
                   </div>
                 )}
               </div>
+            </CardContent>
+          </Card>
+          <Card className="border-amber-200/50 bg-amber-50/30 dark:border-amber-900/30 dark:bg-amber-950/20">
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" />
+                <span>
+                  {agent.disclaimer ?? 'Not for emergencies. This is not a substitute for professional care.'}
+                </span>
+              </p>
             </CardContent>
           </Card>
           <Card>
