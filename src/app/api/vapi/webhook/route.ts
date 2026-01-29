@@ -13,9 +13,10 @@ export async function POST(request: NextRequest) {
     const body = await request.text();
     const payload: VapiWebhookEvent = JSON.parse(body);
 
-    // Verify webhook signature
+    // Verify webhook signature (Vapi uses {timestamp}.{body} when Include Timestamp is on)
     const signature = request.headers.get('x-vapi-signature');
-    if (!verifyVapiSignature(body, signature)) {
+    const timestamp = request.headers.get('x-timestamp');
+    if (!verifyVapiSignature(body, signature, timestamp)) {
       console.warn('Invalid webhook signature');
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
