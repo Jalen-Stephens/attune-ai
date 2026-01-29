@@ -3,14 +3,25 @@ import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
 import { Container } from '@/components/Container';
 import { VapiVoiceWidget } from '@/components/voice/VapiVoiceWidget';
-import { Mic, Headphones } from 'lucide-react';
+import Link from 'next/link';
+import { getAgentById } from '@/lib/agents';
+import { Button } from '@/components/ui/button';
+import { Mic, Headphones, ArrowLeft } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Voice Demo | Attune AI',
-  description: 'Try the Vapi Web SDK voice interface—start a call with an assistant and see the live transcript.',
+  title: 'Voice Call | Attune AI',
+  description: 'Start a voice call with an assistant. Use the widget to connect and see the live transcript.',
 };
 
-export default function VoiceDemoPage() {
+interface VoicePageProps {
+  searchParams: Promise<{ [k: string]: string | string[] | undefined }>;
+}
+
+export default async function VoiceDemoPage({ searchParams }: VoicePageProps) {
+  const params = await searchParams;
+  const agentId = typeof params.agentId === 'string' ? params.agentId : undefined;
+  const agent = agentId ? await getAgentById(agentId) : null;
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Navbar />
@@ -18,16 +29,26 @@ export default function VoiceDemoPage() {
       <main className="flex-1 py-16 sm:py-20 lg:py-24">
         <Container>
           <div className="max-w-2xl mx-auto space-y-8">
+            {agent && (
+              <Button variant="ghost" size="sm" asChild>
+                <Link href={`/agents/${agent.id}`}>
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to {agent.name}
+                </Link>
+              </Button>
+            )}
             <div className="flex items-center gap-4">
               <div className="p-3 rounded-xl bg-primary/10">
                 <Mic className="h-8 w-8 text-primary" aria-hidden />
               </div>
               <div>
                 <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                  Voice demo
+                  {agent ? `Voice call with ${agent.name}` : 'Voice call'}
                 </h1>
                 <p className="mt-1 text-muted-foreground">
-                  Web SDK voice interface with live transcript
+                  {agent
+                    ? `Start a call with ${agent.name}. Use the widget to connect.`
+                    : 'Web SDK voice interface with live transcript'}
                 </p>
               </div>
             </div>
@@ -54,7 +75,7 @@ export default function VoiceDemoPage() {
 
       <Footer />
 
-      <VapiVoiceWidget />
+      <VapiVoiceWidget agentId={agent?.id} agentName={agent?.name} />
     </div>
   );
 }

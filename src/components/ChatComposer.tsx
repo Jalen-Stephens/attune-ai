@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Send, Mic } from 'lucide-react';
+import { Send, Mic, MicOff, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const PLACEHOLDER = 'Enter a prompt here';
@@ -11,8 +11,13 @@ export interface ChatComposerProps {
   disabled?: boolean;
   placeholder?: string;
   className?: string;
-  /** Optional "Use voice" callback; omit to hide mic icon */
+  /** Optional "Use voice" callback (e.g. navigate to /agents); omit to hide mic */
   onUseVoice?: () => void;
+  /** Integrated voice toggle: mic = start/stop call, transcript appended to log */
+  onVoiceToggle?: () => void;
+  voiceActive?: boolean;
+  voiceConnecting?: boolean;
+  voiceReady?: boolean;
   /** Gemini-style: single bar with icons inside (default true) */
   inlineIcons?: boolean;
 }
@@ -23,8 +28,13 @@ export function ChatComposer({
   placeholder = PLACEHOLDER,
   className,
   onUseVoice,
+  onVoiceToggle,
+  voiceActive = false,
+  voiceConnecting = false,
+  voiceReady = true,
   inlineIcons = true,
 }: ChatComposerProps) {
+  const showVoice = Boolean(onVoiceToggle ?? onUseVoice);
   const [value, setValue] = React.useState('');
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -59,6 +69,29 @@ export function ChatComposer({
           aria-label="Message"
         />
         <div className="flex items-center gap-2">
+          {showVoice && (
+            <button
+              type="button"
+              onClick={onVoiceToggle ?? onUseVoice}
+              disabled={disabled || (Boolean(onVoiceToggle) && (voiceConnecting || !voiceReady))}
+              className={cn(
+                'inline-flex items-center rounded-lg border px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                voiceActive
+                  ? 'border-red-500/60 bg-red-50 text-red-600 hover:bg-red-100'
+                  : 'border-input bg-background hover:bg-muted'
+              )}
+              aria-label={voiceActive ? 'Stop voice' : 'Start voice'}
+            >
+              {voiceConnecting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : voiceActive ? (
+                <MicOff className="h-4 w-4 mr-2" />
+              ) : (
+                <Mic className="h-4 w-4 mr-2" />
+              )}
+              {voiceConnecting ? 'Connecting…' : voiceActive ? 'Stop' : 'Use voice'}
+            </button>
+          )}
           <button
             type="submit"
             disabled={!value.trim() || disabled}
@@ -68,18 +101,6 @@ export function ChatComposer({
             <Send className="h-4 w-4 mr-2" />
             Send
           </button>
-          {onUseVoice && (
-            <button
-              type="button"
-              onClick={onUseVoice}
-              disabled={disabled}
-              className="inline-flex items-center rounded-lg border border-input bg-background px-4 py-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Use voice"
-            >
-              <Mic className="h-4 w-4 mr-2" />
-              Use voice
-            </button>
-          )}
         </div>
       </form>
     );
@@ -106,15 +127,27 @@ export function ChatComposer({
         aria-label="Enter a prompt here"
       />
       <div className="flex items-center gap-0.5 pr-2 pb-2 shrink-0">
-        {onUseVoice && (
+        {showVoice && (
           <button
             type="button"
-            onClick={onUseVoice}
-            disabled={disabled}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="Use voice"
+            onClick={onVoiceToggle ?? onUseVoice}
+            disabled={disabled || (Boolean(onVoiceToggle) && (voiceConnecting || !voiceReady))}
+            className={cn(
+              'flex h-9 w-9 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              voiceActive
+                ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            )}
+            aria-label={voiceActive ? 'Stop voice' : 'Start voice'}
+            title={voiceActive ? 'Stop voice' : 'Start voice'}
           >
-            <Mic className="h-5 w-5" />
+            {voiceConnecting ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : voiceActive ? (
+              <MicOff className="h-5 w-5" />
+            ) : (
+              <Mic className="h-5 w-5" />
+            )}
           </button>
         )}
         <button

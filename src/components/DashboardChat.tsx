@@ -1,10 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
 import { ChatComposer } from './ChatComposer';
 import { AssistantResponse, type AssistantResponseData } from './AssistantResponse';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useVapiVoice } from '@/hooks/useVapiVoice';
 import { cn } from '@/lib/utils';
 
 const SUGGESTION_CARDS = [
@@ -17,8 +17,16 @@ const SUGGESTION_CARDS = [
 export interface ConversationTurn {
   id: string;
   role: 'user' | 'assistant';
+  /** Typed user message */
   userMessage?: string;
+  /** Rich assistant reply (typed chat) */
   assistantData?: AssistantResponseData;
+  /** Plain text from voice transcript (user or assistant) */
+  voiceText?: string;
+  /** When present, turn is from voice; otherwise typed */
+  source?: 'typed' | 'voice';
+  /** Shown when connecting to voice agent (no navigation) */
+  isConnecting?: boolean;
 }
 
 export interface DashboardChatProps {
@@ -28,7 +36,6 @@ export interface DashboardChatProps {
 const DEFAULT_CHAT_AGENT_ID = 'general_reflection';
 
 export default function DashboardChat({ userName = 'there' }: DashboardChatProps) {
-  const router = useRouter();
   const [turns, setTurns] = React.useState<ConversationTurn[]>([]);
   const [sessionId, setSessionId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -36,7 +43,84 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
 
-  const handleUseVoice = () => router.push('/agents');
+  const appendVoiceTurn = React.useCallback((t: { role: 'user' | 'assistant'; text: string }) => {
+    setTurns((prev) => [
+      ...prev,
+      {
+        id: `voice-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        role: t.role,
+        voiceText: t.text,
+        source: 'voice',
+      },
+    ]);
+  }, []);
+
+  const {
+    isConnected: isVoiceActive,
+    isStarting: isVoiceConnecting,
+    error: voiceError,
+    isReady: isVoiceReady,
+    startVoice,
+    stopVoice,
+  } = useVapiVoice({ onTranscript: appendVoiceTurn });
+
+  const ensureSession = React.useCallback(async (): Promise<string> => {
+    if (sessionId) return sessionId;
+    const startRes = await fetch('/api/sessions/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: DEFAULT_CHAT_AGENT_ID }),
+    });
+    if (!startRes.ok) {
+      const d = await startRes.json();
+      throw new Error(d.error ?? 'Failed to start conversation');
+    }
+    const d = await startRes.json();
+    setSessionId(d.sessionId);
+    return d.sessionId as string;
+  }, [sessionId]);
+
+  const handleVoiceToggle = React.useCallback(async () => {
+    setError(null);
+    if (isVoiceActive) {
+      stopVoice();
+      return;
+    }
+    try {
+      await ensureSession();
+      await startVoice();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong');
+    }
+  }, [isVoiceActive, stopVoice, ensureSession, startVoice]);
+
+  const handleStartVoiceWithAgent = React.useCallback(
+    async (agentId: string, agentName: string) => {
+      setError(null);
+      if (isVoiceActive || isVoiceConnecting) return;
+      const connectingTurn: ConversationTurn = {
+        id: `connecting-${Date.now()}`,
+        role: 'assistant',
+        voiceText: `Connecting you to the ${agentName}…`,
+        source: 'voice',
+        isConnecting: true,
+      };
+      setTurns((prev) => [...prev, connectingTurn]);
+      try {
+        await ensureSession();
+        await startVoice();
+      } catch (e) {
+        setTurns((prev) =>
+          prev.map((t) =>
+            t.id === connectingTurn.id
+              ? { ...t, voiceText: 'Could not connect. Check your mic and try again.', isConnecting: false }
+              : t
+          )
+        );
+      }
+    },
+    [isVoiceActive, isVoiceConnecting, ensureSession, startVoice]
+  );
 
   React.useEffect(() => {
     if (!listRef.current) return;
@@ -51,25 +135,12 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
       id: `user-${Date.now()}`,
       role: 'user',
       userMessage: message,
+      source: 'typed',
     };
     setTurns((prev) => [...prev, userTurn]);
 
     try {
-      let currentSessionId = sessionId;
-      if (!currentSessionId) {
-        const startRes = await fetch('/api/sessions/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ agentId: DEFAULT_CHAT_AGENT_ID }),
-        });
-        if (!startRes.ok) {
-          const startData = await startRes.json();
-          throw new Error(startData.error ?? 'Failed to start conversation');
-        }
-        const startData = await startRes.json();
-        currentSessionId = startData.sessionId;
-        setSessionId(currentSessionId);
-      }
+      const currentSessionId = await ensureSession();
 
       const res = await fetch(`/api/sessions/${currentSessionId}/chat`, {
         method: 'POST',
@@ -107,6 +178,7 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
         id: `assistant-${Date.now()}`,
         role: 'assistant',
         assistantData,
+        source: 'typed',
       };
       setTurns((prev) => [...prev, assistantTurn]);
     } catch (err) {
@@ -158,26 +230,51 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
               </>
             ) : (
               <div ref={listRef} className="space-y-6 px-4 pt-4 pb-4 max-w-3xl mx-auto w-full">
-                {turns.map((turn) => (
-                  <div
-                    key={turn.id}
-                    className={cn(
-                      'flex',
-                      turn.role === 'user' ? 'justify-end' : 'justify-start'
-                    )}
-                  >
-                    {turn.role === 'user' && turn.userMessage && (
-                      <div className="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-md bg-primary text-primary-foreground px-4 py-3 shadow-sm">
-                        <p className="text-sm whitespace-pre-wrap">{turn.userMessage}</p>
-                      </div>
-                    )}
-                    {turn.role === 'assistant' && turn.assistantData && (
-                      <div className="max-w-[95%] sm:max-w-[85%] rounded-2xl rounded-bl-md border bg-card px-4 py-4 shadow-sm">
-                        <AssistantResponse data={turn.assistantData} />
-                      </div>
-                    )}
-                  </div>
-                ))}
+                {turns.map((turn) => {
+                  const userText = turn.userMessage ?? turn.voiceText;
+                  return (
+                    <div
+                      key={turn.id}
+                      className={cn(
+                        'flex',
+                        turn.role === 'user' ? 'justify-end' : 'justify-start'
+                      )}
+                    >
+                      {turn.role === 'user' && userText && (
+                        <div className="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-md bg-primary text-primary-foreground px-4 py-3 shadow-sm">
+                          <p className="text-sm whitespace-pre-wrap">{userText}</p>
+                          {turn.source === 'voice' && (
+                            <p className="text-xs text-primary-foreground/70 mt-1">Voice</p>
+                          )}
+                        </div>
+                      )}
+                      {turn.role === 'assistant' && turn.assistantData && (
+                        <div className="max-w-[95%] sm:max-w-[85%] rounded-2xl rounded-bl-md border bg-card px-4 py-4 shadow-sm">
+                          <AssistantResponse
+                            data={turn.assistantData}
+                            onStartVoice={handleStartVoiceWithAgent}
+                            voiceActive={isVoiceActive}
+                            voiceConnecting={isVoiceConnecting}
+                            voiceReady={isVoiceReady}
+                          />
+                        </div>
+                      )}
+                      {turn.role === 'assistant' && turn.voiceText && !turn.assistantData && (
+                        <div
+                          className={cn(
+                            'max-w-[95%] sm:max-w-[85%] rounded-2xl rounded-bl-md border bg-card px-4 py-4 shadow-sm',
+                            turn.isConnecting && 'border-primary/30 bg-primary/5'
+                          )}
+                        >
+                          <p className="text-sm whitespace-pre-wrap">{turn.voiceText}</p>
+                          {!turn.isConnecting && (
+                            <p className="text-xs text-muted-foreground mt-2">Voice</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
 
                 {loading && (
                   <div className="flex justify-start">
@@ -202,10 +299,10 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
               </div>
             )}
 
-            {error && (
+            {(error || voiceError) && (
               <div className="max-w-3xl mx-auto w-full px-4 pb-4">
                 <div className="rounded-xl border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
-                  {error}
+                  {error ?? voiceError}
                 </div>
               </div>
             )}
@@ -218,9 +315,12 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
             <ChatComposer
               onSubmit={handleSubmit}
               disabled={loading}
-              placeholder="Enter a prompt here"
-              onUseVoice={handleUseVoice}
+              placeholder="Type a message or start talking…"
               inlineIcons
+              voiceActive={isVoiceActive}
+              voiceConnecting={isVoiceConnecting}
+              voiceReady={isVoiceReady}
+              onVoiceToggle={handleVoiceToggle}
             />
             <p className="text-xs text-muted-foreground mt-3 text-center">
               Not for emergencies. This is supportive coaching, not medical or clinical advice. If you&apos;re in crisis, please contact 988 or emergency services.

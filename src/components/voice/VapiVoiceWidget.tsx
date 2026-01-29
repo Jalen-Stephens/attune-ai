@@ -18,7 +18,16 @@ type VapiMessage = {
   [k: string]: unknown;
 };
 
-export function VapiVoiceWidget() {
+export interface VapiVoiceWidgetProps {
+  /** Attune agent id (for display / future session linking) */
+  agentId?: string;
+  /** Agent display name shown in widget header */
+  agentName?: string;
+  /** Override env assistant ID when using per-agent Vapi assistants */
+  assistantIdOverride?: string;
+}
+
+export function VapiVoiceWidget({ agentName, assistantIdOverride }: VapiVoiceWidgetProps = {}) {
   const [isConnected, setConnected] = useState(false);
   const [isStarting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +43,7 @@ export function VapiVoiceWidget() {
   } | null>(null);
 
   const publicKey = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY ?? '';
-  const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID ?? '';
+  const assistantId = assistantIdOverride ?? process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID ?? '';
 
   const runValidation = useCallback(() => {
     try {
@@ -164,7 +173,7 @@ export function VapiVoiceWidget() {
           ) : (
             <MicOff className="h-4 w-4 text-muted-foreground" aria-hidden />
           )}
-          Voice · {status}
+          Voice{agentName ? ` · ${agentName}` : ''} · {status}
         </span>
         <div className="flex items-center gap-2">
           <Button
@@ -209,7 +218,7 @@ export function VapiVoiceWidget() {
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           {transcript.length === 0 && !lastMessage && (
             <p className="text-sm text-muted-foreground">
-              Start a call to see the live transcript.
+              {agentName ? `Start a call with ${agentName} to see the transcript.` : 'Start a call to see the live transcript.'}
             </p>
           )}
           {transcript.map((entry, i) => (

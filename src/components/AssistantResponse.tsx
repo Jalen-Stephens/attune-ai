@@ -17,9 +17,21 @@ export interface AssistantResponseData {
 export interface AssistantResponseProps {
   data: AssistantResponseData;
   className?: string;
+  /** Start voice with suggested agent in-dashboard (no navigation) */
+  onStartVoice?: (agentId: string, agentName: string) => void;
+  voiceActive?: boolean;
+  voiceConnecting?: boolean;
+  voiceReady?: boolean;
 }
 
-export function AssistantResponse({ data, className }: AssistantResponseProps) {
+export function AssistantResponse({
+  data,
+  className,
+  onStartVoice,
+  voiceActive = false,
+  voiceConnecting = false,
+  voiceReady = true,
+}: AssistantResponseProps) {
   const {
     assistant_message,
     clarifying_question,
@@ -56,7 +68,13 @@ export function AssistantResponse({ data, className }: AssistantResponseProps) {
       )}
 
       {!isCrisis && suggested_agents.length > 0 && (
-        <SuggestedAgents agents={suggested_agents} />
+        <SuggestedAgents
+          agents={suggested_agents}
+          onStartVoice={onStartVoice}
+          voiceActive={voiceActive}
+          voiceConnecting={voiceConnecting}
+          voiceReady={voiceReady}
+        />
       )}
 
       {!isCrisis && suggested_resources.length > 0 && (
