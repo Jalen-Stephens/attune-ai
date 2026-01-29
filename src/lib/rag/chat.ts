@@ -21,6 +21,15 @@ export interface RetrievedChunk {
   metadata?: Record<string, unknown>;
 }
 
+/** Compact agent info for the LLM to suggest voice agents */
+export interface AvailableAgentForPrompt {
+  id: string;
+  name: string;
+  description: string;
+  tags?: string[];
+  recommendedFor?: string[];
+}
+
 export interface ChatPromptInput {
   systemPrompt: string;
   context: ChatContextInput;
@@ -28,13 +37,17 @@ export interface ChatPromptInput {
   disclaimer: string;
   crisisDetected?: boolean;
   crisisMessage?: string;
+  /** Voice agents the user can be suggested (for suggested_agents); exclude current session agent */
+  availableAgents?: AvailableAgentForPrompt[];
+  /** Current session agent id — suggest *other* agents that fit the user's situation */
+  currentAgentId?: string;
 }
 
 const STRUCTURED_RESPONSE_SCHEMA = `You must respond with valid JSON only, no markdown or extra text. Schema:
 {
   "message": "string (brief, conversational reply: 1-4 sentences; directly address what the user said; do not lecture or dump long text)",
   "resources": [{"id": "string", "title": "string", "snippet": "string", "url": "string | null", "type": "string", "reason": "string"}],
-  "suggested_agents": [{"agent_id": "string", "name": "string", "reason": "string", "confidence": number 0-1}]
+  "suggested_agents": [{"agent_id": "string (must match an available voice agent id)", "name": "string", "reason": "string (1 sentence: why this agent fits what the user shared)", "confidence": number 0-1}]
 }`;
 
 function buildRetrievalQuery(context: ChatContextInput): string {
@@ -56,10 +69,18 @@ export function buildRetrievalQueryFromContext(context: ChatContextInput): strin
 }
 
 export function buildSystemPrompt(input: ChatPromptInput): string {
-  const { systemPrompt, disclaimer, crisisDetected, crisisMessage } = input;
+  const { systemPrompt, disclaimer, crisisDetected, crisisMessage, availableAgents, currentAgentId } = input;
   let system = systemPrompt + '\n\n' + disclaimer;
   system +=
     '\n\nKeep your reply brief and conversational (typically 1-4 sentences). Directly address what the user said; do not lecture or dump long blocks of text. Use retrieved context only to briefly support your reply.';
+
+  if (availableAgents && availableAgents.length > 0) {
+    system +=
+      '\n\n**Suggest both an agent and a resource when relevant**: In each reply, when the user\'s situation fits, include (1) at least one voice agent in suggested_agents — someone they can talk to — and (2) at least one resource in resources — something to read or try (from retrieved context or a short tip). Match the agent to their situation (e.g. anxiety → Anxiety agent). Use suggested_agents early and often; only use agent_id from the list in the user message; give a short, tailored reason for each. Do not suggest the current agent (current agent id: ' +
+      (currentAgentId || 'none') +
+      ').';
+  }
+
   if (crisisDetected && crisisMessage) {
     system +=
       '\n\nIf the user has expressed a crisis (e.g. self-harm, suicide), respond with empathy and include the following safety message. Do not ignore it: ' +
@@ -70,8 +91,23 @@ export function buildSystemPrompt(input: ChatPromptInput): string {
 }
 
 export function buildUserPrompt(input: ChatPromptInput): string {
-  const { context, retrievedChunks, crisisDetected } = input;
+  const { context, retrievedChunks, crisisDetected, availableAgents, currentAgentId } = input;
   const lines: string[] = [];
+
+  if (availableAgents && availableAgents.length > 0) {
+    lines.push('## Available voice agents (suggest 1–3 when they fit the user\'s situation; use these ids in suggested_agents)');
+    availableAgents.forEach((a) => {
+      const extras: string[] = [];
+      if (a.tags?.length) extras.push('tags: ' + a.tags.slice(0, 5).join(', '));
+      if (a.recommendedFor?.length) extras.push('good for: ' + a.recommendedFor.slice(0, 3).join('; '));
+      const extra = extras.length ? ' | ' + extras.join(' | ') : '';
+      lines.push(`- id: "${a.id}" | name: ${a.name} | ${a.description}${extra}`);
+    });
+    if (currentAgentId) {
+      lines.push(`(Current agent for this chat: ${currentAgentId} — suggest *other* agents that fit.)`);
+    }
+    lines.push('');
+  }
 
   if (retrievedChunks.length > 0) {
     lines.push('## Retrieved context (use briefly to support your reply; do not repeat long passages)');
@@ -90,7 +126,7 @@ export function buildUserPrompt(input: ChatPromptInput): string {
   lines.push(
     crisisDetected
       ? 'The user may be in crisis. Include the safety message and suggest 988 / professional help. Still respond with valid JSON.'
-      : 'Reply briefly and directly to the user. Respond with valid JSON only (message, resources, suggested_agents).'
+      : 'Reply briefly and directly to the user. When relevant, include at least one suggested_agent (voice agent they can talk to) and at least one resource (something to read or try). Respond with valid JSON only (message, resources, suggested_agents).'
   );
 
   return lines.join('\n');

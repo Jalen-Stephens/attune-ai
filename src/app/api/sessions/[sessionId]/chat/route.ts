@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerClient } from '@/utils/supabase/server';
 import { getSessionDetail } from '@/lib/db';
-import { getAgentById } from '@/lib/agents';
+import { getAgentById, getAgents } from '@/lib/agents';
 import { getEmbedding } from '@/lib/rag/embeddings';
 import {
   buildRetrievalQueryFromContext,
@@ -113,6 +113,17 @@ export async function POST(
       })
     );
 
+    const allAgents = await getAgents();
+    const availableAgentsForPrompt = allAgents
+      .filter((a) => a.id !== agent.id)
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        description: a.description,
+        tags: a.tags,
+        recommendedFor: a.recommendedFor,
+      }));
+
     const promptInput = {
       systemPrompt: agent.system_prompt,
       context: {
@@ -133,6 +144,8 @@ export async function POST(
       disclaimer: BASE_DISCLAIMER,
       crisisDetected: crisis.isCrisis,
       crisisMessage: crisis.isCrisis ? crisis.message : undefined,
+      availableAgents: availableAgentsForPrompt,
+      currentAgentId: agent.id,
     };
 
     const systemPrompt = buildSystemPrompt(promptInput);
