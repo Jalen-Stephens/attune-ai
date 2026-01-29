@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { ingestDocument } from '@/lib/rag/ingest';
+import { ingestFolder } from '@/lib/rag/ingest-folder';
 
-const RagIngestSchema = z.object({
-  agentId: z.string().min(1),
-  title: z.string().min(1),
-  content: z.string().min(1),
-  metadata: z.record(z.any()).optional(),
+const IngestFolderSchema = z.object({
+  overrideAgentId: z.string().min(1).optional(),
 });
 
 function requireIngestSecret(request: NextRequest): NextResponse | null {
@@ -31,33 +28,31 @@ export async function POST(request: NextRequest) {
   if (authError) return authError;
 
   try {
-    const body = await request.json();
-    const { agentId, title, content, metadata } = RagIngestSchema.parse(body);
-
-    const result = await ingestDocument({
-      agentId,
-      title,
-      content,
-      metadata: metadata ?? undefined,
-    });
-
-    return NextResponse.json({
-      ragDocId: result.ragDocId,
-      chunksInserted: result.chunksInserted,
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Invalid request body', details: error.errors },
-        { status: 400 }
-      );
+    let overrideAgentId: string | undefined;
+    try {
+      const body = await request.json();
+      const parsed = IngestFolderSchema.safeParse(body);
+      if (parsed.success && parsed.data.overrideAgentId) {
+        overrideAgentId = parsed.data.overrideAgentId;
+      }
+    } catch {
+      // No body or invalid JSON: proceed without override
     }
 
-    console.error('Error ingesting RAG document:', error);
+    const result = await ingestFolder(overrideAgentId);
+
+    return NextResponse.json({
+      filesProcessed: result.filesProcessed,
+      docsInserted: result.docsInserted,
+      totalChunksInserted: result.totalChunksInserted,
+      failures: result.failures,
+    });
+  } catch (error) {
+    console.error('Error ingesting RAG folder:', error);
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : 'Failed to ingest document',
+          error instanceof Error ? error.message : 'Failed to ingest folder',
       },
       { status: 500 }
     );

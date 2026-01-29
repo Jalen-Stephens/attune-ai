@@ -76,5 +76,24 @@ export async function getEmbeddings(texts: string[]): Promise<number[][]> {
   const sorted = (data.data ?? [])
     .slice()
     .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-  return sorted.map((d) => d.embedding).filter(Boolean);
+  const embeddings = sorted.map((d) => d.embedding).filter(Boolean) as number[][];
+  for (let i = 0; i < embeddings.length; i++) {
+    if (embeddings[i].length !== EMBEDDING_DIMENSIONS) {
+      throw new Error(
+        `Embedding dimension mismatch: expected ${EMBEDDING_DIMENSIONS}, got ${embeddings[i].length} (chunk ${i + 1}). Ensure OPENAI_EMBEDDING_MODEL and OPENAI_EMBEDDING_DIMENSIONS match your model.`
+      );
+    }
+  }
+  return embeddings;
+}
+
+/**
+ * Validate that a single embedding has the expected dimensions (e.g. 1536 for text-embedding-3-small).
+ */
+export function validateEmbeddingDimensions(embedding: number[]): void {
+  if (embedding.length !== EMBEDDING_DIMENSIONS) {
+    throw new Error(
+      `Embedding dimension mismatch: expected ${EMBEDDING_DIMENSIONS}, got ${embedding.length}. Ensure OPENAI_EMBEDDING_DIMENSIONS matches your model.`
+    );
+  }
 }

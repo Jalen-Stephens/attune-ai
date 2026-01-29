@@ -1,4 +1,4 @@
-export { splitIntoChunks, type ChunkWithIndex } from './chunking';
+export { splitIntoChunks, type ChunkWithIndex } from './chunk';
 export {
   getEmbedding,
   getEmbeddings,

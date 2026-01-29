@@ -5,7 +5,7 @@ const BASE_SAFETY =
   'Do not provide medical or clinical advice or diagnose conditions. If crisis language is detected, encourage seeking immediate professional help.';
 
 // Single source of truth: seed agent profiles with directory metadata (specialtyCategory, tags, etc.)
-const SEED_AGENTS: AgentProfile[] = [
+export const SEED_AGENTS: AgentProfile[] = [
   {
     id: 'addiction_support',
     name: 'Addiction Support Agent',
