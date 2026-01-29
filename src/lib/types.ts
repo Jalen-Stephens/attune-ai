@@ -76,6 +76,8 @@ export interface Session {
   user_phone?: string | null;
   channel?: 'voice' | 'chat' | 'unknown' | null;
   vapi_call_id?: string | null;
+  state?: SessionState | null;
+  user_id?: string | null;
 }
 
 export interface TranscriptTurn {
@@ -110,6 +112,71 @@ export interface RagDoc {
   embedding?: Uint8Array | null;
   metadata?: Record<string, any> | null;
   created_at?: string;
+}
+
+/** Chunk-level RAG record with embedding (rag_doc_chunks) */
+export interface RagDocChunk {
+  id: string;
+  rag_doc_id: string;
+  agent_id: string;
+  chunk_index: number;
+  content: string;
+  embedding?: number[] | null;
+  metadata: Record<string, unknown>;
+  created_at?: string;
+}
+
+/** Observability: one row per RAG retrieval for an assistant turn */
+export interface RagRetrieval {
+  id: string;
+  session_id: string;
+  assistant_turn_id: string;
+  query: string;
+  retrieved_chunks: RetrievedChunkLog[];
+  created_at?: string;
+}
+
+export interface RetrievedChunkLog {
+  chunk_id: string;
+  rag_doc_id: string;
+  score: number;
+  content_preview?: string;
+}
+
+/** UI suggestion (resource or agent) attached to a turn */
+export interface Suggestion {
+  id: string;
+  session_id: string;
+  turn_id: string;
+  kind: 'resource' | 'agent';
+  payload: ResourceSuggestionPayload | AgentSuggestionPayload;
+  shown: boolean;
+  clicked: boolean;
+  created_at?: string;
+}
+
+export interface ResourceSuggestionPayload {
+  id: string;
+  title: string;
+  snippet: string;
+  url?: string;
+  type: string;
+  reason: string;
+}
+
+export interface AgentSuggestionPayload {
+  agent_id: string;
+  name: string;
+  reason: string;
+  confidence: number;
+}
+
+/** Session runtime state (sessions.state JSONB) */
+export interface SessionState {
+  current_topic?: string;
+  risk_flags?: string[];
+  active_agent?: string;
+  last_router_confidence?: number;
 }
 
 // Vapi webhook event types
@@ -164,11 +231,57 @@ export interface RagQueryRequest {
 export interface RagQueryResponse {
   results: Array<{
     id: string;
-    title: string;
+    title?: string;
     content: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
     score?: number;
+    chunk_id?: string;
+    rag_doc_id?: string;
   }>;
+}
+
+/** Structured LLM chat response (message + resources + suggested agents) */
+export interface ChatStructuredResponse {
+  message: string;
+  resources: Array<{
+    id: string;
+    title: string;
+    snippet: string;
+    url?: string;
+    type: string;
+    reason: string;
+  }>;
+  suggested_agents: Array<{
+    agent_id: string;
+    name: string;
+    reason: string;
+    confidence: number;
+  }>;
+}
+
+/** Frontend chat API response contract */
+export interface ChatApiResponse {
+  turnId: string;
+  message: string;
+  resources: ResourceCard[];
+  suggestedAgents: AgentCard[];
+  retrievalLogged: boolean;
+}
+
+export interface ResourceCard {
+  id: string;
+  title: string;
+  snippet: string;
+  url?: string;
+  type: string;
+  reason: string;
+}
+
+export interface AgentCard {
+  agent_id: string;
+  name: string;
+  reason: string;
+  confidence: number;
 }
 
 // Screening + Referral Types

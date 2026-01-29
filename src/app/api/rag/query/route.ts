@@ -1,41 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerClient } from '@/utils/supabase/server';
+import { getEmbedding } from '@/lib/rag/embeddings';
 import type { RagQueryResponse } from '@/lib/types';
 
 const RagQuerySchema = z.object({
   agentId: z.string().min(1),
   query: z.string().min(1),
   topK: z.number().int().positive().optional().default(5),
+  matchThreshold: z.number().min(0).max(1).optional().default(0),
 });
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { agentId, query, topK } = RagQuerySchema.parse(body);
+    const { agentId, query, topK, matchThreshold } = RagQuerySchema.parse(body);
+
+    const queryEmbedding = await getEmbedding(query);
 
     const supabase = await createServerClient();
-
-    // TODO: Implement vector search with pgvector
-    // For now, return placeholder results based on simple text matching
-    const { data, error } = await supabase
-      .from('rag_docs')
-      .select('id, title, content, metadata')
-      .eq('agent_id', agentId)
-      .limit(topK);
+    const { data, error } = await supabase.rpc('match_rag_chunks', {
+      query_embedding: queryEmbedding,
+      filter_agent_id: agentId,
+      match_count: topK,
+      match_threshold: matchThreshold,
+    });
 
     if (error) {
-      throw new Error(`Failed to query RAG documents: ${error.message}`);
+      throw new Error(`RAG query failed: ${error.message}`);
     }
 
-    // Return placeholder results (will be replaced with actual vector similarity search)
-    const results: RagQueryResponse['results'] = (data || []).map((doc) => ({
-      id: doc.id,
-      title: doc.title,
-      content: doc.content,
-      metadata: doc.metadata || undefined,
-      score: 0.8, // Placeholder score
-    }));
+    const results: RagQueryResponse['results'] = (data ?? []).map(
+      (row: {
+        id: string;
+        rag_doc_id: string;
+        content: string;
+        metadata: Record<string, unknown> | null;
+        similarity: number;
+      }) => ({
+        id: row.rag_doc_id,
+        chunk_id: row.id,
+        rag_doc_id: row.rag_doc_id,
+        content: row.content,
+        metadata: row.metadata ?? undefined,
+        score: row.similarity,
+      })
+    );
 
     return NextResponse.json({ results });
   } catch (error) {
@@ -48,7 +58,10 @@ export async function POST(request: NextRequest) {
 
     console.error('Error querying RAG:', error);
     return NextResponse.json(
-      { error: 'Failed to query RAG documents' },
+      {
+        error:
+          error instanceof Error ? error.message : 'Failed to query RAG',
+      },
       { status: 500 }
     );
   }
