@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
-import { insertTranscriptTurn, endSession, createOrUpdateSession, logEvent } from '@/lib/db';
+import { insertTranscriptTurn, endSessionServiceRole, createOrUpdateSessionServiceRole, logEvent, replaceTranscriptTurns, getSessionByVapiCallId, saveSummaryServiceRole } from '@/lib/db';
 import { verifyVapiSignature } from '@/lib/webhook-verification';
 import { 
   createOrUpdateIntakeTool, 
@@ -44,18 +44,46 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Handle end-of-call-report: replace transcript with clean artifact, save Vapi summary
+    const msg = (payload as { message?: { type?: string; call?: { id?: string }; artifact?: { messages?: Array<{ role: string; message?: string; time?: number }> }; analysis?: { summary?: string } } }).message;
+    if (msg?.type === 'end-of-call-report') {
+      const callId = msg.call?.id ?? (payload as any).call?.id ?? (payload as any).callId ?? (payload as any).call_id;
+      if (callId) {
+        const detail = await getSessionByVapiCallId(callId);
+        if (detail) {
+          const artifactMessages = msg.artifact?.messages ?? (payload as any).artifact?.messages ?? [];
+          const turns = artifactMessages
+            .filter((m: { role?: string }) => m.role === 'user' || m.role === 'bot')
+            .sort((a: { time?: number }, b: { time?: number }) => (a.time ?? 0) - (b.time ?? 0))
+            .map((m: { role?: string; message?: string; content?: string; time?: number }) => ({
+              role: (m.role === 'bot' ? 'assistant' : 'user') as 'user' | 'assistant',
+              text: ((m.message ?? (m as { content?: string }).content) ?? '').trim(),
+              timestamp: m.time ? new Date(m.time).toISOString() : undefined,
+            }))
+            .filter((t: { text: string }) => !!t.text);
+          if (turns.length) await replaceTranscriptTurns(detail.session.id, turns);
+          const summary = msg.analysis?.summary ?? (payload as any).analysis?.summary;
+          if (typeof summary === 'string' && summary.trim()) {
+            await saveSummaryServiceRole(detail.session.id, summary.trim());
+          }
+          await endSessionServiceRole(detail.session.id);
+        }
+      }
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
+
     // Extract Vapi call ID
-    const vapiCallId = payload.call?.id || (payload as any).callId || (payload as any).call_id;
+    const vapiCallId = payload.call?.id ?? (payload as any).callId ?? (payload as any).call_id ?? msg?.call?.id;
     
     if (!vapiCallId) {
       console.warn('No Vapi call ID found in webhook payload:', payload);
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
-    // Get or create session ID from Vapi call ID mapping
+    // Get or create session ID from Vapi call ID mapping (service role—webhook has no user context)
     let sessionId: string;
     try {
-      sessionId = await createOrUpdateSession(
+      sessionId = await createOrUpdateSessionServiceRole(
         (payload as any).agentId || 'general_reflection', // Default agent
         vapiCallId,
         (payload as any).userEmail || (payload as any).user_email,
@@ -147,7 +175,7 @@ export async function POST(request: NextRequest) {
 
       case 'call-ended':
         if (sessionId) {
-          await endSession(sessionId);
+          await endSessionServiceRole(sessionId);
           
           // Auto-send referral email if intake is complete and consented
           try {

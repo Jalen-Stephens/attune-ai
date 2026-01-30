@@ -73,6 +73,16 @@ We listen for `message.type === 'tool-calls'` (and `message.functionCall`) and l
 - No server routes expose these keys; they are used only in the browser by the widget.
 - See [Vapi security docs](https://docs.vapi.ai/) for best practices.
 
+## End-of-call report and clean transcript
+
+When Vapi sends an **end-of-call-report** webhook, we:
+
+1. **Replace** the session’s transcript with the **clean** `artifact.messages` (no duplicates or partials).
+2. **Store** the Vapi **summary** (`analysis.summary`) in `session_summaries`.
+3. **End** the session.
+
+The dashboard **polls** `GET /api/sessions/by-vapi-call/[callId]` after a call ends (using the call id from `call-start-success`). When transcript and/or summary are available, the in-dashboard chat log is **updated** with the final, clean transcription.
+
 ## Webhook payload debugging
 
 In **development**, the Vapi webhook handler writes **live** webhook payloads to `vapi-webhook-last.json` in the project root. Only `transcript` and `call-started` events are written; `call-ended` and `end-of-call-report` are skipped so you can inspect mid-conversation response structure. The file is overwritten on each new transcript (or call-started) and includes:

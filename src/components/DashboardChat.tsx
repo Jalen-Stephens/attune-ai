@@ -5,6 +5,7 @@ import { ChatComposer } from './ChatComposer';
 import { AssistantResponse, type AssistantResponseData } from './AssistantResponse';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useVapiVoice } from '@/hooks/useVapiVoice';
+import { VoiceOscillatingIcon } from '@/components/voice/VoiceOscillatingIcon';
 import { cn } from '@/lib/utils';
 
 const SUGGESTION_CARDS = [
@@ -40,80 +41,50 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
   const [sessionId, setSessionId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [liveTranscript, setLiveTranscript] = React.useState<{
-    role: 'user' | 'assistant';
-    text: string;
-  } | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
-  const lastCommittedRef = React.useRef<{ role: 'user' | 'assistant'; text: string; at: number } | null>(null);
 
-  const commitVoiceTurn = React.useCallback((role: 'user' | 'assistant', text: string) => {
-    const t = text.trim();
-    if (!t) return;
-    const now = Date.now();
-    const last = lastCommittedRef.current;
-    if (last && last.role === role && last.text === t && now - last.at < 1200) {
-      return;
-    }
-    lastCommittedRef.current = { role, text: t, at: now };
-    setTurns((prev) => {
-      const lastTurn = prev[prev.length - 1];
-      if (lastTurn?.source === 'voice' && lastTurn.role === role && lastTurn.voiceText === t) {
-        return prev;
+  const pollAndAppendCleanTranscript = React.useCallback(
+    async (vapiCallId: string) => {
+      const maxAttempts = 6;
+      const delayMs = 1500;
+      for (let i = 0; i < maxAttempts; i++) {
+        try {
+          const res = await fetch(`/api/sessions/by-vapi-call/${encodeURIComponent(vapiCallId)}`);
+          const data = await res.json();
+          const transcript = data.transcript ?? [];
+          const summary = data.summary ?? null;
+          if (transcript.length > 0 || (summary && typeof summary === 'string')) {
+            setTurns((prev) => {
+              const withoutConnecting = prev.filter((t) => !t.isConnecting);
+              const base = `voice-clean-${Date.now()}`;
+              const voiceTurns: ConversationTurn[] = transcript.map(
+                (t: { role: string; text: string }, i: number) => ({
+                  id: `${base}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+                  role: t.role as 'user' | 'assistant',
+                  voiceText: t.text,
+                  source: 'voice',
+                })
+              );
+              return [...withoutConnecting, ...voiceTurns];
+            });
+            return;
+          }
+        } catch (_) {
+          /* ignore */
+        }
+        if (i < maxAttempts - 1) await new Promise((r) => setTimeout(r, delayMs));
       }
-      return [
-        ...prev,
-        {
-          id: `voice-${now}-${Math.random().toString(36).slice(2, 9)}`,
-          role,
-          voiceText: t,
-          source: 'voice',
-        },
-      ];
-    });
-  }, []);
-
-  const onTranscriptChunk = React.useCallback(
-    (t: { role: 'user' | 'assistant'; text: string }) => {
-      const chunk = (t.text || '').trim();
-      if (!chunk) return;
-      setLiveTranscript((prev) => {
-        if (!prev || prev.role !== t.role) return { role: t.role, text: chunk };
-        const prevTrim = prev.text.trimEnd();
-        if (!prevTrim) return { role: t.role, text: chunk };
-        if (chunk.startsWith(prevTrim)) return { role: t.role, text: chunk };
-        const sep = prevTrim.endsWith(' ') ? '' : ' ';
-        return { role: t.role, text: prevTrim + sep + chunk };
-      });
     },
     []
   );
 
-  const onSpeechStart = React.useCallback(() => {
-    setLiveTranscript((prev) => {
-      if (prev?.text.trim()) commitVoiceTurn(prev.role, prev.text);
-      return { role: 'user', text: '' };
-    });
-  }, [commitVoiceTurn]);
-
-  const onSpeechEnd = React.useCallback(() => {
-    setLiveTranscript((prev) => {
-      if (prev?.role === 'user') {
-        if (prev.text.trim()) commitVoiceTurn('user', prev.text);
-        return null;
-      }
-      return prev ?? null;
-    });
-  }, [commitVoiceTurn]);
-
-  const onCallEnd = React.useCallback(() => {
-    lastCommittedRef.current = null;
-    setLiveTranscript((prev) => {
-      if (prev?.text.trim()) commitVoiceTurn(prev.role, prev.text);
-      return null;
-    });
-  }, [commitVoiceTurn]);
+  const onCallEnd = React.useCallback(
+    (vapiCallId: string | null) => {
+      if (vapiCallId) pollAndAppendCleanTranscript(vapiCallId);
+    },
+    [pollAndAppendCleanTranscript]
+  );
 
   const {
     isConnected: isVoiceActive,
@@ -122,16 +93,7 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
     isReady: isVoiceReady,
     startVoice,
     stopVoice,
-  } = useVapiVoice({
-    onTranscript: onTranscriptChunk,
-    onSpeechStart,
-    onSpeechEnd,
-    onCallEnd,
-  });
-
-  React.useEffect(() => {
-    if (isVoiceActive) lastCommittedRef.current = null;
-  }, [isVoiceActive]);
+  } = useVapiVoice({ onCallEnd });
 
   const ensureSession = React.useCallback(async (): Promise<string> => {
     if (sessionId) return sessionId;
@@ -194,7 +156,7 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
   React.useEffect(() => {
     if (!listRef.current) return;
     listRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [turns, loading, liveTranscript?.text]);
+  }, [turns, loading]);
 
   const handleSubmit = async (message: string) => {
     setError(null);
@@ -345,6 +307,15 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
                   );
                 })}
 
+                {isVoiceActive && (
+                  <div className="flex justify-center py-3">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-4 py-2 text-sm text-muted-foreground">
+                      <VoiceOscillatingIcon className="text-primary" />
+                      <span>Listening…</span>
+                    </div>
+                  </div>
+                )}
+
                 {loading && (
                   <div className="flex justify-start">
                     <div className="rounded-2xl rounded-bl-md border bg-card px-4 py-4 shadow-sm w-full max-w-[85%] space-y-3">
@@ -362,35 +333,6 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
                         <Skeleton className="h-16 w-full rounded-lg" />
                         <Skeleton className="h-16 w-full rounded-lg" />
                       </div>
-                    </div>
-                  </div>
-                )}
-
-                {liveTranscript && (
-                  <div
-                    className={cn(
-                      'flex',
-                      liveTranscript.role === 'user' ? 'justify-end' : 'justify-start'
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 shadow-sm',
-                        'border border-primary/30 bg-primary/5',
-                        'transition-[border-color,background-color] duration-300',
-                        liveTranscript.role === 'user'
-                          ? 'rounded-br-md'
-                          : 'rounded-bl-md'
-                      )}
-                    >
-                      <p className="text-sm whitespace-pre-wrap text-foreground min-h-[1.25rem]">
-                        {liveTranscript.text ? (
-                          liveTranscript.text
-                        ) : (
-                          <span className="text-muted-foreground italic">Listening…</span>
-                        )}
-                      </p>
-                      <p className="text-xs text-primary/80 mt-1.5 font-medium">Live</p>
                     </div>
                   </div>
                 )}

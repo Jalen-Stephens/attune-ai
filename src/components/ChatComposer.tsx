@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Send, Mic, MicOff, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { VoiceOscillatingIcon } from '@/components/voice/VoiceOscillatingIcon';
 
 const PLACEHOLDER = 'Enter a prompt here';
 
@@ -85,7 +86,7 @@ export function ChatComposer({
               {voiceConnecting ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : voiceActive ? (
-                <MicOff className="h-4 w-4 mr-2" />
+                <VoiceOscillatingIcon className="h-4 w-4 mr-2 text-red-600" />
               ) : (
                 <Mic className="h-4 w-4 mr-2" />
               )}
@@ -144,7 +145,7 @@ export function ChatComposer({
             {voiceConnecting ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : voiceActive ? (
-              <MicOff className="h-5 w-5" />
+              <VoiceOscillatingIcon className="text-primary" />
             ) : (
               <Mic className="h-5 w-5" />
             )}

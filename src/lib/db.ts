@@ -1,4 +1,4 @@
-import { createServerClient } from '@/utils/supabase/server';
+import { createServerClient, createServiceRoleClient } from '@/utils/supabase/server';
 import type { Session, TranscriptTurn, SessionSummary, AgentProfile, Intake, Referral, Event, EmailSummary, UserProfile } from './types';
 
 /**
@@ -69,6 +69,21 @@ export async function endSession(sessionId: string): Promise<void> {
 }
 
 /**
+ * Mark a session as ended (service role). Use from webhook when no user context.
+ */
+export async function endSessionServiceRole(sessionId: string): Promise<void> {
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase
+    .from('sessions')
+    .update({
+      status: 'ended',
+      ended_at: new Date().toISOString(),
+    })
+    .eq('id', sessionId);
+  if (error) throw new Error(`Failed to end session: ${error.message}`);
+}
+
+/**
  * Save a session summary
  */
 export async function saveSummary(
@@ -90,6 +105,90 @@ export async function saveSummary(
   if (error) {
     throw new Error(`Failed to save summary: ${error.message}`);
   }
+}
+
+/**
+ * Save a session summary (service role). Use from webhook when no user context.
+ */
+export async function saveSummaryServiceRole(
+  sessionId: string,
+  summaryText: string,
+  summaryJson?: SessionSummary['summary_json']
+): Promise<void> {
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase
+    .from('session_summaries')
+    .upsert(
+      {
+        session_id: sessionId,
+        summary_text: summaryText,
+        summary_json: summaryJson ?? null,
+      },
+      { onConflict: 'session_id' }
+    );
+  if (error) throw new Error(`Failed to save summary: ${error.message}`);
+}
+
+/**
+ * Replace all transcript turns for a session (e.g. with clean end-of-call artifact).
+ * Uses service role to bypass RLS for delete.
+ */
+export async function replaceTranscriptTurns(
+  sessionId: string,
+  turns: { role: 'user' | 'assistant'; text: string; timestamp?: string }[]
+): Promise<void> {
+  const supabase = createServiceRoleClient();
+  const { error: delError } = await supabase
+    .from('transcript_turns')
+    .delete()
+    .eq('session_id', sessionId);
+  if (delError) {
+    throw new Error(`Failed to delete transcript turns: ${delError.message}`);
+  }
+  for (const t of turns) {
+    const { error } = await supabase.from('transcript_turns').insert({
+      session_id: sessionId,
+      role: t.role,
+      text: t.text,
+      timestamp: t.timestamp || new Date().toISOString(),
+    });
+    if (error) throw new Error(`Failed to insert transcript turn: ${error.message}`);
+  }
+}
+
+/**
+ * Get session with transcript and summary by Vapi call ID. Uses service role.
+ */
+export async function getSessionByVapiCallId(vapiCallId: string): Promise<{
+  session: Session;
+  transcript: TranscriptTurn[];
+  summary: SessionSummary | null;
+} | null> {
+  const supabase = createServiceRoleClient();
+  const { data: sessionRow, error: sessionError } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('vapi_call_id', vapiCallId)
+    .single();
+  if (sessionError || !sessionRow) return null;
+
+  const { data: transcriptData } = await supabase
+    .from('transcript_turns')
+    .select('*')
+    .eq('session_id', sessionRow.id)
+    .order('timestamp', { ascending: true });
+
+  const { data: summaryRow } = await supabase
+    .from('session_summaries')
+    .select('*')
+    .eq('session_id', sessionRow.id)
+    .single();
+
+  return {
+    session: sessionRow as Session,
+    transcript: (transcriptData ?? []) as TranscriptTurn[],
+    summary: (summaryRow as SessionSummary) ?? null,
+  };
 }
 
 /**
@@ -214,13 +313,14 @@ export async function createOrUpdateSession(
     return existing.id;
   }
   
-  // Create new session
+  // Create new session (user_id explicitly null for webhook/anon so RLS allows insert)
   const { data, error } = await supabase
     .from('sessions')
     .insert({
       agent_id: agentId,
       status: 'active',
       vapi_call_id: vapiCallId,
+      user_id: null,
       user_email: userEmail || null,
       user_phone: userPhone || null,
       channel,
@@ -232,6 +332,43 @@ export async function createOrUpdateSession(
     throw new Error(`Failed to create session: ${error.message}`);
   }
   
+  return data.id;
+}
+
+/**
+ * Create or update session (service role). Use from webhook—bypasses RLS.
+ */
+export async function createOrUpdateSessionServiceRole(
+  agentId: string,
+  vapiCallId: string,
+  userEmail?: string,
+  userPhone?: string,
+  channel: 'voice' | 'chat' | 'unknown' = 'voice'
+): Promise<string> {
+  const supabase = createServiceRoleClient();
+  const { data: existing } = await supabase
+    .from('sessions')
+    .select('id')
+    .eq('vapi_call_id', vapiCallId)
+    .single();
+
+  if (existing) return existing.id;
+
+  const { data, error } = await supabase
+    .from('sessions')
+    .insert({
+      agent_id: agentId,
+      status: 'active',
+      vapi_call_id: vapiCallId,
+      user_id: null,
+      user_email: userEmail || null,
+      user_phone: userPhone || null,
+      channel,
+    })
+    .select('id')
+    .single();
+
+  if (error) throw new Error(`Failed to create session: ${error.message}`);
   return data.id;
 }
 
