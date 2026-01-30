@@ -1,4 +1,4 @@
-import { getSessionDetail, getIntake, getReferrals } from '@/lib/db';
+import { getSessionDetail, getIntake, getReferrals, getSuggestionsForSession } from '@/lib/db';
 import TranscriptViewer from '@/components/TranscriptViewer';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -27,7 +27,21 @@ export default async function SessionDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const { session, transcript, summary } = sessionData;
+  const { session, transcript, summary, userDisplayName } = sessionData;
+
+  let suggestions: Awaited<ReturnType<typeof getSuggestionsForSession>> = [];
+  try {
+    suggestions = await getSuggestionsForSession(sessionId);
+  } catch {
+    // Suggestions are optional for display; don't 404 the page
+  }
+
+  // Group suggestions by turn_id for transcript icons
+  const suggestionsByTurnId: Record<string, { kind: 'resource' | 'agent'; payload: unknown }[]> = {};
+  for (const s of suggestions) {
+    if (!suggestionsByTurnId[s.turn_id]) suggestionsByTurnId[s.turn_id] = [];
+    suggestionsByTurnId[s.turn_id].push({ kind: s.kind, payload: s.payload });
+  }
 
   const formatDateTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -192,7 +206,11 @@ export default async function SessionDetailPage({ params }: PageProps) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <TranscriptViewer turns={transcript} />
+              <TranscriptViewer
+                turns={transcript}
+                userDisplayName={userDisplayName}
+                suggestionsByTurnId={suggestionsByTurnId}
+              />
             </CardContent>
           </Card>
         </TabsContent>

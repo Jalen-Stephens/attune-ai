@@ -83,6 +83,8 @@ When Vapi sends an **end-of-call-report** webhook, we:
 
 The dashboard **polls** `GET /api/sessions/by-vapi-call/[callId]` after a call ends (using the call id from `call-start-success`). When transcript and/or summary are available, the in-dashboard chat log is **updated** with the final, clean transcription.
 
+**Session Details:** The dashboard uses a **user** session (from “Start” / typed chat). The webhook creates a separate **voice** session (by `vapi_call_id`). After a call ends, the client calls `POST /api/sessions/link-voice-call` with `{ sessionId, vapiCallId }`. That **merges** the voice transcript and Vapi summary into the dashboard session and marks it **ended**. The Session Details page (Conversations → session) therefore shows the full transcript, summary, and status “ended” once the link runs.
+
 ## Webhook payload debugging
 
 In **development**, the Vapi webhook handler writes **live** webhook payloads to `vapi-webhook-last.json` in the project root. Only `transcript` and `call-started` events are written; `call-ended` and `end-of-call-report` are skipped so you can inspect mid-conversation response structure. The file is overwritten on each new transcript (or call-started) and includes:

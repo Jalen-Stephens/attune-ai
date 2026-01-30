@@ -43,6 +43,10 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
   const [error, setError] = React.useState<string | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
+  const sessionIdRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   const pollAndAppendCleanTranscript = React.useCallback(
     async (vapiCallId: string) => {
@@ -68,6 +72,14 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
               );
               return [...withoutConnecting, ...voiceTurns];
             });
+            const sid = sessionIdRef.current;
+            if (sid) {
+              fetch('/api/sessions/link-voice-call', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: sid, vapiCallId }),
+              }).catch(() => {});
+            }
             return;
           }
         } catch (_) {

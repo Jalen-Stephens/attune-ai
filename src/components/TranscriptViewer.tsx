@@ -1,13 +1,24 @@
 import type { TranscriptTurn } from '@/lib/types';
 import { Badge } from './ui/badge';
 import { cn } from '@/lib/utils';
-import { Clock } from 'lucide-react';
+import { Clock, BookOpen, UserCircle } from 'lucide-react';
+
+export type SuggestionsByTurnId = Record<
+  string,
+  { kind: 'resource' | 'agent'; payload: unknown }[]
+>;
 
 interface TranscriptViewerProps {
   turns: TranscriptTurn[];
+  userDisplayName?: string | null;
+  suggestionsByTurnId?: SuggestionsByTurnId;
 }
 
-export default function TranscriptViewer({ turns }: TranscriptViewerProps) {
+export default function TranscriptViewer({
+  turns,
+  userDisplayName,
+  suggestionsByTurnId = {},
+}: TranscriptViewerProps) {
   if (turns.length === 0) {
     return (
       <div className="py-12 text-center">
@@ -16,10 +27,16 @@ export default function TranscriptViewer({ turns }: TranscriptViewerProps) {
     );
   }
 
+  const labelForRole = (role: 'user' | 'assistant') =>
+    role === 'user' ? (userDisplayName?.trim() || 'user') : role;
+
   return (
     <div className="space-y-4">
       {turns.map((turn) => {
         const isUser = turn.role === 'user';
+        const suggestions = suggestionsByTurnId[turn.id] ?? [];
+        const hasResources = suggestions.some((s) => s.kind === 'resource');
+        const hasAgents = suggestions.some((s) => s.kind === 'agent');
         return (
           <div
             key={turn.id}
@@ -36,12 +53,12 @@ export default function TranscriptViewer({ turns }: TranscriptViewerProps) {
                   : 'bg-muted/50 border-border'
               )}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge
                   variant={isUser ? 'default' : 'secondary'}
                   className="text-xs"
                 >
-                  {turn.role}
+                  {labelForRole(turn.role)}
                 </Badge>
                 {turn.timestamp && (
                   <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -50,6 +67,22 @@ export default function TranscriptViewer({ turns }: TranscriptViewerProps) {
                       hour: '2-digit',
                       minute: '2-digit',
                     })}
+                  </span>
+                )}
+                {!isUser && (hasResources || hasAgents) && (
+                  <span className="flex items-center gap-1.5 text-muted-foreground" title="Suggested resources or agents">
+                    {hasResources && (
+                      <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs" title="Suggested resources">
+                        <BookOpen className="h-3.5 w-3.5" />
+                        <span>Resources</span>
+                      </span>
+                    )}
+                    {hasAgents && (
+                      <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs" title="Suggested agents">
+                        <UserCircle className="h-3.5 w-3.5" />
+                        <span>Agents</span>
+                      </span>
+                    )}
                   </span>
                 )}
               </div>

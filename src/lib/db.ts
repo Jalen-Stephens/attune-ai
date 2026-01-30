@@ -1,5 +1,5 @@
 import { createServerClient, createServiceRoleClient } from '@/utils/supabase/server';
-import type { Session, TranscriptTurn, SessionSummary, AgentProfile, Intake, Referral, Event, EmailSummary, UserProfile } from './types';
+import type { Session, TranscriptTurn, SessionSummary, AgentProfile, Intake, Referral, Event, EmailSummary, UserProfile, Suggestion } from './types';
 
 /**
  * Create a new session for an agent.
@@ -157,6 +157,27 @@ export async function replaceTranscriptTurns(
 }
 
 /**
+ * Append transcript turns to a session (e.g. voice turns into dashboard session).
+ * Uses service role.
+ */
+export async function appendTranscriptTurns(
+  sessionId: string,
+  turns: { role: 'user' | 'assistant'; text: string; timestamp?: string }[]
+): Promise<void> {
+  if (turns.length === 0) return;
+  const supabase = createServiceRoleClient();
+  for (const t of turns) {
+    const { error } = await supabase.from('transcript_turns').insert({
+      session_id: sessionId,
+      role: t.role,
+      text: t.text,
+      timestamp: t.timestamp || new Date().toISOString(),
+    });
+    if (error) throw new Error(`Failed to append transcript turn: ${error.message}`);
+  }
+}
+
+/**
  * Get session with transcript and summary by Vapi call ID. Uses service role.
  */
 export async function getSessionByVapiCallId(vapiCallId: string): Promise<{
@@ -229,6 +250,7 @@ export async function getSessionDetail(sessionId: string): Promise<{
   session: Session;
   transcript: TranscriptTurn[];
   summary: SessionSummary | null;
+  userDisplayName: string | null;
 }> {
   const supabase = await createServerClient();
   // Get session with agent info
@@ -249,6 +271,19 @@ export async function getSessionDetail(sessionId: string): Promise<{
 
   if (sessionError) {
     throw new Error(`Failed to get session: ${sessionError.message}`);
+  }
+
+  // Resolve user display name from profile when session has user_id
+  let userDisplayName: string | null = null;
+  if (sessionData.user_id) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('display_name, full_name')
+      .eq('id', sessionData.user_id)
+      .single();
+    if (profile) {
+      userDisplayName = profile.display_name?.trim() || profile.full_name?.trim() || null;
+    }
   }
 
   // Get transcript turns
@@ -287,7 +322,32 @@ export async function getSessionDetail(sessionId: string): Promise<{
     },
     transcript: transcriptData || [],
     summary: summaryData || null,
+    userDisplayName,
   };
+}
+
+/**
+ * Get all suggestions for a session (grouped by turn for transcript UI)
+ */
+export async function getSuggestionsForSession(sessionId: string): Promise<Suggestion[]> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase
+    .from('suggestions')
+    .select('id, turn_id, kind, payload')
+    .eq('session_id', sessionId);
+
+  if (error) {
+    throw new Error(`Failed to get suggestions: ${error.message}`);
+  }
+  return (data || []).map((row) => ({
+    id: row.id,
+    session_id: sessionId,
+    turn_id: row.turn_id,
+    kind: row.kind as 'resource' | 'agent',
+    payload: row.payload as Suggestion['payload'],
+    shown: false,
+    clicked: false,
+  }));
 }
 
 /**
@@ -368,7 +428,20 @@ export async function createOrUpdateSessionServiceRole(
     .select('id')
     .single();
 
-  if (error) throw new Error(`Failed to create session: ${error.message}`);
+  if (error) {
+    const isDuplicate =
+      error.code === '23505' ||
+      (typeof error.message === 'string' && error.message.includes('duplicate key'));
+    if (isDuplicate) {
+      const { data: retry } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('vapi_call_id', vapiCallId)
+        .single();
+      if (retry?.id) return retry.id;
+    }
+    throw new Error(`Failed to create session: ${error.message}`);
+  }
   return data.id;
 }
 
