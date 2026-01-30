@@ -73,6 +73,16 @@ We listen for `message.type === 'tool-calls'` (and `message.functionCall`) and l
 - No server routes expose these keys; they are used only in the browser by the widget.
 - See [Vapi security docs](https://docs.vapi.ai/) for best practices.
 
+## Webhook payload debugging
+
+In **development**, the Vapi webhook handler writes **live** webhook payloads to `vapi-webhook-last.json` in the project root. Only `transcript` and `call-started` events are written; `call-ended` and `end-of-call-report` are skipped so you can inspect mid-conversation response structure. The file is overwritten on each new transcript (or call-started) and includes:
+
+- `_receivedAt`: ISO timestamp when the request was received
+- `_webhookType`: same as `type` (e.g. `transcript`, `call-started`)
+- The full Vapi payload (e.g. `type`, `call`, `transcript` / `message`, etc.)
+
+Use this to inspect the exact structure of live transcript events. The file is gitignored.
+
 ## References
 
 - [Vapi Web quickstart](https://docs.vapi.ai/quickstart/web)

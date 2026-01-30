@@ -40,20 +40,80 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
   const [sessionId, setSessionId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [liveTranscript, setLiveTranscript] = React.useState<{
+    role: 'user' | 'assistant';
+    text: string;
+  } | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
+  const lastCommittedRef = React.useRef<{ role: 'user' | 'assistant'; text: string; at: number } | null>(null);
 
-  const appendVoiceTurn = React.useCallback((t: { role: 'user' | 'assistant'; text: string }) => {
-    setTurns((prev) => [
-      ...prev,
-      {
-        id: `voice-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-        role: t.role,
-        voiceText: t.text,
-        source: 'voice',
-      },
-    ]);
+  const commitVoiceTurn = React.useCallback((role: 'user' | 'assistant', text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    const now = Date.now();
+    const last = lastCommittedRef.current;
+    if (last && last.role === role && last.text === t && now - last.at < 1200) {
+      return;
+    }
+    lastCommittedRef.current = { role, text: t, at: now };
+    setTurns((prev) => {
+      const lastTurn = prev[prev.length - 1];
+      if (lastTurn?.source === 'voice' && lastTurn.role === role && lastTurn.voiceText === t) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          id: `voice-${now}-${Math.random().toString(36).slice(2, 9)}`,
+          role,
+          voiceText: t,
+          source: 'voice',
+        },
+      ];
+    });
   }, []);
+
+  const onTranscriptChunk = React.useCallback(
+    (t: { role: 'user' | 'assistant'; text: string }) => {
+      const chunk = (t.text || '').trim();
+      if (!chunk) return;
+      setLiveTranscript((prev) => {
+        if (!prev || prev.role !== t.role) return { role: t.role, text: chunk };
+        const prevTrim = prev.text.trimEnd();
+        if (!prevTrim) return { role: t.role, text: chunk };
+        if (chunk.startsWith(prevTrim)) return { role: t.role, text: chunk };
+        const sep = prevTrim.endsWith(' ') ? '' : ' ';
+        return { role: t.role, text: prevTrim + sep + chunk };
+      });
+    },
+    []
+  );
+
+  const onSpeechStart = React.useCallback(() => {
+    setLiveTranscript((prev) => {
+      if (prev?.text.trim()) commitVoiceTurn(prev.role, prev.text);
+      return { role: 'user', text: '' };
+    });
+  }, [commitVoiceTurn]);
+
+  const onSpeechEnd = React.useCallback(() => {
+    setLiveTranscript((prev) => {
+      if (prev?.role === 'user') {
+        if (prev.text.trim()) commitVoiceTurn('user', prev.text);
+        return null;
+      }
+      return prev ?? null;
+    });
+  }, [commitVoiceTurn]);
+
+  const onCallEnd = React.useCallback(() => {
+    lastCommittedRef.current = null;
+    setLiveTranscript((prev) => {
+      if (prev?.text.trim()) commitVoiceTurn(prev.role, prev.text);
+      return null;
+    });
+  }, [commitVoiceTurn]);
 
   const {
     isConnected: isVoiceActive,
@@ -62,7 +122,16 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
     isReady: isVoiceReady,
     startVoice,
     stopVoice,
-  } = useVapiVoice({ onTranscript: appendVoiceTurn });
+  } = useVapiVoice({
+    onTranscript: onTranscriptChunk,
+    onSpeechStart,
+    onSpeechEnd,
+    onCallEnd,
+  });
+
+  React.useEffect(() => {
+    if (isVoiceActive) lastCommittedRef.current = null;
+  }, [isVoiceActive]);
 
   const ensureSession = React.useCallback(async (): Promise<string> => {
     if (sessionId) return sessionId;
@@ -125,7 +194,7 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
   React.useEffect(() => {
     if (!listRef.current) return;
     listRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [turns, loading]);
+  }, [turns, loading, liveTranscript?.text]);
 
   const handleSubmit = async (message: string) => {
     setError(null);
@@ -293,6 +362,35 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
                         <Skeleton className="h-16 w-full rounded-lg" />
                         <Skeleton className="h-16 w-full rounded-lg" />
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {liveTranscript && (
+                  <div
+                    className={cn(
+                      'flex',
+                      liveTranscript.role === 'user' ? 'justify-end' : 'justify-start'
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 shadow-sm',
+                        'border border-primary/30 bg-primary/5',
+                        'transition-[border-color,background-color] duration-300',
+                        liveTranscript.role === 'user'
+                          ? 'rounded-br-md'
+                          : 'rounded-bl-md'
+                      )}
+                    >
+                      <p className="text-sm whitespace-pre-wrap text-foreground min-h-[1.25rem]">
+                        {liveTranscript.text ? (
+                          liveTranscript.text
+                        ) : (
+                          <span className="text-muted-foreground italic">Listening…</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-primary/80 mt-1.5 font-medium">Live</p>
                     </div>
                   </div>
                 )}

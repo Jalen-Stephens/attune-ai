@@ -16,6 +16,12 @@ type VapiMessage = {
 export interface UseVapiVoiceOptions {
   /** Called for each transcript segment (user or assistant) during a call */
   onTranscript?: (turn: VoiceTranscriptTurn) => void;
+  /** User started speaking; use to begin buffering user transcript */
+  onSpeechStart?: () => void;
+  /** User stopped speaking; use to commit buffered user transcript */
+  onSpeechEnd?: () => void;
+  /** Call ended; use to commit any remaining buffered transcript */
+  onCallEnd?: () => void;
   /** Optional override for Vapi assistant ID (default: env) */
   assistantIdOverride?: string;
 }
@@ -31,6 +37,9 @@ export interface UseVapiVoiceResult {
 
 export function useVapiVoice({
   onTranscript,
+  onSpeechStart,
+  onSpeechEnd,
+  onCallEnd,
   assistantIdOverride,
 }: UseVapiVoiceOptions = {}): UseVapiVoiceResult {
   const [isConnected, setConnected] = useState(false);
@@ -41,10 +50,18 @@ export function useVapiVoice({
     callStart: () => void;
     callEnd: () => void;
     message: (m: VapiMessage) => void;
+    speechStart: () => void;
+    speechEnd: () => void;
     error: (e: unknown) => void;
   } | null>(null);
   const onTranscriptRef = useRef(onTranscript);
+  const onSpeechStartRef = useRef(onSpeechStart);
+  const onSpeechEndRef = useRef(onSpeechEnd);
+  const onCallEndRef = useRef(onCallEnd);
   onTranscriptRef.current = onTranscript;
+  onSpeechStartRef.current = onSpeechStart;
+  onSpeechEndRef.current = onSpeechEnd;
+  onCallEndRef.current = onCallEnd;
 
   const publicKey = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY ?? '';
   const assistantId = assistantIdOverride ?? process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID ?? '';
@@ -70,6 +87,7 @@ export function useVapiVoice({
     const onCallEnd = () => {
       setConnected(false);
       setStarting(false);
+      onCallEndRef.current?.();
     };
     const onMessage = (message: VapiMessage) => {
       if (message.type === 'transcript' && message.role && message.transcript) {
@@ -78,6 +96,8 @@ export function useVapiVoice({
         onTranscriptRef.current?.({ role, text });
       }
     };
+    const onSpeechStart = () => onSpeechStartRef.current?.();
+    const onSpeechEnd = () => onSpeechEndRef.current?.();
     const onError = (e: unknown) => {
       const errMsg =
         e instanceof Error ? e.message : typeof e === 'string' ? e : 'Voice error';
@@ -86,10 +106,19 @@ export function useVapiVoice({
       setConnected(false);
     };
 
-    handlersRef.current = { callStart: onCallStart, callEnd: onCallEnd, message: onMessage, error: onError };
+    handlersRef.current = {
+      callStart: onCallStart,
+      callEnd: onCallEnd,
+      message: onMessage,
+      speechStart: onSpeechStart,
+      speechEnd: onSpeechEnd,
+      error: onError,
+    };
     vapi.on('call-start', onCallStart);
     vapi.on('call-end', onCallEnd);
     vapi.on('message', onMessage);
+    vapi.on('speech-start', onSpeechStart);
+    vapi.on('speech-end', onSpeechEnd);
     vapi.on('error', onError);
 
     return () => {
@@ -101,6 +130,8 @@ export function useVapiVoice({
           (v as { off: (e: string, fn: () => void) => void }).off('call-start', h.callStart);
           (v as { off: (e: string, fn: (m: VapiMessage) => void) => void }).off('call-end', h.callEnd);
           (v as { off: (e: string, fn: (m: VapiMessage) => void) => void }).off('message', h.message);
+          (v as { off: (e: string, fn: () => void) => void }).off('speech-start', h.speechStart);
+          (v as { off: (e: string, fn: () => void) => void }).off('speech-end', h.speechEnd);
           (v as { off: (e: string, fn: (e: unknown) => void) => void }).off('error', h.error);
         }
         vapiRef.current = null;

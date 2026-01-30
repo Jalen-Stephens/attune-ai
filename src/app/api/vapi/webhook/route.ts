@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { writeFile } from 'fs/promises';
+import { join } from 'path';
 import { insertTranscriptTurn, endSession, createOrUpdateSession, logEvent } from '@/lib/db';
 import { verifyVapiSignature } from '@/lib/webhook-verification';
 import { 
@@ -19,6 +21,27 @@ export async function POST(request: NextRequest) {
     if (!verifyVapiSignature(body, signature, timestamp)) {
       console.warn('Invalid webhook signature');
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    }
+
+    // In development, write last *live* webhook payload (transcript only) for inspection
+    if (process.env.NODE_ENV === 'development') {
+      const skipTypes = ['call-ended', 'end-of-call-report'];
+      const topLevel = (payload as { type?: string }).type;
+      const nested = (payload as { message?: { type?: string } }).message?.type;
+      const isEnd = skipTypes.includes(topLevel ?? '') || skipTypes.includes(nested ?? '');
+      if (!isEnd && (topLevel === 'transcript' || topLevel === 'call-started' || nested === 'transcript')) {
+        try {
+          const out = join(process.cwd(), 'vapi-webhook-last.json');
+          const blob = {
+            _receivedAt: new Date().toISOString(),
+            _webhookType: topLevel ?? nested ?? 'unknown',
+            ...payload,
+          };
+          await writeFile(out, JSON.stringify(blob, null, 2), 'utf-8');
+        } catch (e) {
+          console.warn('Could not write vapi-webhook-last.json:', e);
+        }
+      }
     }
 
     // Extract Vapi call ID

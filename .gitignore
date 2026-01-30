@@ -21,6 +21,7 @@
 
 # debug
 npm-debug.log*
+vapi-webhook-last.json
 yarn-debug.log*
 yarn-error.log*
 
