@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Vapi from '@vapi-ai/web';
 import { validateVapiEnv } from '@/lib/vapi-env';
+import type { CallContextResponse } from '@/lib/vapi/types';
+import { sanitizeChatSummary } from '@/lib/vapi/call-context-summary';
 
 export type VoiceTranscriptTurn = { role: 'user' | 'assistant'; text: string };
 
@@ -12,6 +14,18 @@ type VapiMessage = {
   transcript?: string;
   [k: string]: unknown;
 };
+
+/**
+ * Build generic first message using name only. chatSummary is passed via variableValues
+ * so Peter can reference it as private background, not read verbatim.
+ */
+function buildFirstMessageFromContext(ctx: CallContextResponse): string {
+  const firstName = (ctx.firstName ?? '').trim();
+  if (firstName) {
+    return `Hi ${firstName}, I'm Peter. What's been going on?`;
+  }
+  return `Hi, I'm Peter. What's been going on?`;
+}
 
 export interface UseVapiVoiceOptions {
   /** Called for each transcript segment (user or assistant) during a call */
@@ -31,7 +45,8 @@ export interface UseVapiVoiceResult {
   isStarting: boolean;
   error: string | null;
   isReady: boolean;
-  startVoice: () => Promise<void>;
+  /** Start voice call. Pass sessionId to inject user/chat context (name + summary) into the greeting. */
+  startVoice: (sessionId?: string) => Promise<void>;
   stopVoice: () => void;
 }
 
@@ -150,7 +165,7 @@ export function useVapiVoice({
     };
   }, [publicKey, assistantId]);
 
-  const startVoice = useCallback(async () => {
+  const startVoice = useCallback(async (sessionId?: string) => {
     if (!isReady || !vapiRef.current) {
       try {
         validateVapiEnv();
@@ -162,7 +177,41 @@ export function useVapiVoice({
     setError(null);
     setStarting(true);
     try {
-      await vapiRef.current.start(assistantId);
+      let assistantOverrides: { firstMessage?: string; variableValues?: Record<string, string> } | undefined;
+      if (sessionId) {
+        try {
+          const res = await fetch('/api/vapi/call-context', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId }),
+          });
+          if (res.ok) {
+            const ctx = (await res.json()) as CallContextResponse;
+            const variableValues: Record<string, string> = {
+              firstName: (ctx.firstName ?? '').trim(),
+              lastName: (ctx.lastName ?? '').trim(),
+              sessionId: (ctx.sessionId ?? '').trim(),
+              chatSummary: sanitizeChatSummary(ctx.chatSummary ?? ''),
+            };
+            assistantOverrides = {
+              firstMessage: buildFirstMessageFromContext(ctx),
+              variableValues,
+            };
+            if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+              console.log('[Vapi] variableValues', variableValues);
+            }
+          } else {
+            if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+              console.warn('[Vapi] call-context returned', res.status);
+            }
+          }
+        } catch (e) {
+          if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+            console.warn('[Vapi] call-context failed, starting with generic greeting', e);
+          }
+        }
+      }
+      await vapiRef.current.start(assistantId, assistantOverrides as Parameters<Vapi['start']>[1]);
     } catch (e) {
       const errMsg =
         e instanceof Error ? e.message : typeof e === 'string' ? e : 'Failed to start voice';

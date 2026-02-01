@@ -130,8 +130,8 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
       return;
     }
     try {
-      await ensureSession();
-      await startVoice();
+      const sid = await ensureSession();
+      await startVoice(sid);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
     }
@@ -150,8 +150,8 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
       };
       setTurns((prev) => [...prev, connectingTurn]);
       try {
-        await ensureSession();
-        await startVoice();
+        const sid = await ensureSession();
+        await startVoice(sid);
       } catch (e) {
         setTurns((prev) =>
           prev.map((t) =>
