@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { validateVapiSecret } from '@/lib/tools/_auth';
 import { logToolCall } from '@/lib/tools/_logger';
+import { storeFindProviders } from '@/lib/tools/_toolResultCache';
 import { handleFindProviders } from '@/lib/tools/findProviders/handler';
 
 const FindProvidersSchema = z.object({
+  sessionId: z.string().optional(),
   zip: z.string().min(1, 'zip is required'),
   specialty: z.enum([
     'therapy',
@@ -50,11 +52,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[findProviders] payload received:', JSON.stringify(parsed.data, null, 2));
+    }
+
     const result = handleFindProviders(parsed.data);
+
+    if (parsed.data.sessionId) {
+      storeFindProviders(parsed.data.sessionId, result.providers, result.disclaimer);
+    }
 
     await logToolCall({
       toolName: 'findProviders',
-      sessionId: null,
+      sessionId: parsed.data.sessionId ?? null,
       success: true,
       durationMs: Date.now() - start,
     });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { validateVapiSecret } from '@/lib/tools/_auth';
 import { logToolCall } from '@/lib/tools/_logger';
+import { storeGetRagResources } from '@/lib/tools/_toolResultCache';
 import { handleGetRagResources } from '@/lib/tools/getRagResources/handler';
 
 const GetRagResourcesSchema = z.object({
@@ -42,6 +43,12 @@ export async function POST(request: NextRequest) {
       userMessage: parsed.data.userMessage ?? null,
       agentId: parsed.data.agentId ?? null,
     });
+
+    storeGetRagResources(parsed.data.sessionId, result.resources);
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[getRagResources] stored', result.resources.length, 'resources for session', parsed.data.sessionId);
+    }
 
     await logToolCall({
       toolName: 'getRagResources',

@@ -3,8 +3,10 @@
 import * as React from 'react';
 import { ChatComposer } from './ChatComposer';
 import { AssistantResponse, type AssistantResponseData } from './AssistantResponse';
+import { ProviderCards } from './ProviderCards';
+import { SuggestedResources } from './SuggestedResources';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useVapiVoice } from '@/hooks/useVapiVoice';
+import { useVapiVoice, type VapiToolResult } from '@/hooks/useVapiVoice';
 import { VoiceOscillatingIcon } from '@/components/voice/VoiceOscillatingIcon';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +26,8 @@ export interface ConversationTurn {
   assistantData?: AssistantResponseData;
   /** Plain text from voice transcript (user or assistant) */
   voiceText?: string;
+  /** Tool result from Vapi (findProviders or getRagResources) shown during voice call */
+  toolResult?: VapiToolResult;
   /** When present, turn is from voice; otherwise typed */
   source?: 'typed' | 'voice';
   /** Shown when connecting to voice agent (no navigation) */
@@ -98,6 +102,16 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
     [pollAndAppendCleanTranscript]
   );
 
+  const onToolResult = React.useCallback((result: VapiToolResult) => {
+    const turn: ConversationTurn = {
+      id: `tool-${result.tool}-${Date.now()}`,
+      role: 'assistant',
+      toolResult: result,
+      source: 'voice',
+    };
+    setTurns((prev) => [...prev, turn]);
+  }, []);
+
   const {
     isConnected: isVoiceActive,
     isStarting: isVoiceConnecting,
@@ -105,7 +119,54 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
     isReady: isVoiceReady,
     startVoice,
     stopVoice,
-  } = useVapiVoice({ onCallEnd });
+  } = useVapiVoice({ onCallEnd, onToolResult });
+
+  const lastShownToolRef = React.useRef<{
+    findProviders?: number;
+    getRagResources?: number;
+  }>({});
+
+  React.useEffect(() => {
+    if (!isVoiceActive || !sessionId) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/tool-results`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const last = lastShownToolRef.current;
+        if (data.findProviders && data.findProviders.storedAt > (last.findProviders ?? 0)) {
+          last.findProviders = data.findProviders.storedAt;
+          const turn: ConversationTurn = {
+            id: `tool-findProviders-${Date.now()}`,
+            role: 'assistant',
+            toolResult: {
+              tool: 'findProviders',
+              providers: data.findProviders.providers ?? [],
+              disclaimer: data.findProviders.disclaimer,
+            },
+            source: 'voice',
+          };
+          setTurns((prev) => [...prev, turn]);
+        }
+        if (data.getRagResources && data.getRagResources.storedAt > (last.getRagResources ?? 0)) {
+          last.getRagResources = data.getRagResources.storedAt;
+          const turn: ConversationTurn = {
+            id: `tool-getRagResources-${Date.now()}`,
+            role: 'assistant',
+            toolResult: {
+              tool: 'getRagResources',
+              resources: data.getRagResources.resources ?? [],
+            },
+            source: 'voice',
+          };
+          setTurns((prev) => [...prev, turn]);
+        }
+      } catch {
+        /* ignore */
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [isVoiceActive, sessionId]);
 
   const ensureSession = React.useCallback(async (): Promise<string> => {
     if (sessionId) return sessionId;
@@ -302,7 +363,43 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
                           />
                         </div>
                       )}
-                      {turn.role === 'assistant' && turn.voiceText && !turn.assistantData && (
+                      {turn.role === 'assistant' && turn.toolResult && (
+                        <div className="max-w-[95%] sm:max-w-[85%] rounded-2xl rounded-bl-md border bg-card px-4 py-4 shadow-sm">
+                          {turn.toolResult.tool === 'findProviders' && (
+                            <ProviderCards
+                              providers={turn.toolResult.providers}
+                              disclaimer={turn.toolResult.disclaimer}
+                            />
+                          )}
+                          {turn.toolResult.tool === 'getRagResources' && (
+                            <div className="space-y-3">
+                              <h3 className="text-sm font-semibold text-foreground">Resources for you</h3>
+                              {turn.toolResult.resources.length > 0 ? (
+                                <SuggestedResources
+                                  resources={turn.toolResult.resources.map((r, i) => {
+                                    const raw = r as Record<string, unknown>;
+                                    return {
+                                      id: String(raw.id ?? i),
+                                      slug: String(raw.id ?? i),
+                                      title: String(raw.title ?? 'Resource'),
+                                      snippet: String(raw.snippet ?? ''),
+                                      url: raw.url ? String(raw.url) : undefined,
+                                      reason: String(raw.why ?? raw.reason ?? ''),
+                                      type: String(raw.type ?? 'article'),
+                                    };
+                                  })}
+                                />
+                              ) : (
+                                <p className="text-sm text-muted-foreground">
+                                  No resources matched for this topic.
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          <p className="text-xs text-muted-foreground mt-2">From voice call</p>
+                        </div>
+                      )}
+                      {turn.role === 'assistant' && turn.voiceText && !turn.assistantData && !turn.toolResult && (
                         <div
                           className={cn(
                             'max-w-[95%] sm:max-w-[85%] rounded-2xl rounded-bl-md border bg-card px-4 py-4 shadow-sm',

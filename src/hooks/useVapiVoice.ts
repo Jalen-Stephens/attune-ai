@@ -12,8 +12,15 @@ type VapiMessage = {
   type?: string;
   role?: string;
   transcript?: string;
+  functionCall?: { name?: string; arguments?: unknown };
+  toolCalls?: Array<{ name?: string; result?: unknown; [k: string]: unknown }>;
   [k: string]: unknown;
 };
+
+/** Tool result from findProviders or getRagResources for display in chat */
+export type VapiToolResult =
+  | { tool: 'findProviders'; providers: Array<Record<string, unknown>>; disclaimer?: string }
+  | { tool: 'getRagResources'; resources: Array<Record<string, unknown>> };
 
 /**
  * Build generic first message using name only. chatSummary is passed via variableValues
@@ -30,6 +37,8 @@ function buildFirstMessageFromContext(ctx: CallContextResponse): string {
 export interface UseVapiVoiceOptions {
   /** Called for each transcript segment (user or assistant) during a call */
   onTranscript?: (turn: VoiceTranscriptTurn) => void;
+  /** Called when a server-side tool returns a result (e.g. findProviders, getRagResources). Enable tool-calls-result in Vapi assistant clientMessages. */
+  onToolResult?: (result: VapiToolResult) => void;
   /** User started speaking; use to begin buffering user transcript */
   onSpeechStart?: () => void;
   /** User stopped speaking; use to commit buffered user transcript */
@@ -52,6 +61,7 @@ export interface UseVapiVoiceResult {
 
 export function useVapiVoice({
   onTranscript,
+  onToolResult,
   onSpeechStart,
   onSpeechEnd,
   onCallEnd,
@@ -72,10 +82,12 @@ export function useVapiVoice({
     error: (e: unknown) => void;
   } | null>(null);
   const onTranscriptRef = useRef(onTranscript);
+  const onToolResultRef = useRef(onToolResult);
   const onSpeechStartRef = useRef(onSpeechStart);
   const onSpeechEndRef = useRef(onSpeechEnd);
   const onCallEndRef = useRef(onCallEnd);
   onTranscriptRef.current = onTranscript;
+  onToolResultRef.current = onToolResult;
   onSpeechStartRef.current = onSpeechStart;
   onSpeechEndRef.current = onSpeechEnd;
   onCallEndRef.current = onCallEnd;
@@ -112,10 +124,65 @@ export function useVapiVoice({
       onCallEndRef.current?.(callId);
     };
     const onMessage = (message: VapiMessage) => {
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        const t = message.type ?? (message as { message?: { type?: string } }).message?.type;
+        if (t && ['tool-calls-result', 'function-call-result', 'tool-calls', 'function-call'].includes(t)) {
+          console.log('[Vapi] message type:', t, message);
+        }
+      }
       if (message.type === 'transcript' && message.role && message.transcript) {
         const role = message.role as 'user' | 'assistant';
         const text = message.transcript as string;
         onTranscriptRef.current?.({ role, text });
+        return;
+      }
+      if (message.type === 'tool-calls-result' || message.type === 'function-call-result') {
+        if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+          console.log('[Vapi] tool-calls-result:', message);
+        }
+        const toolCallResult = (message as { toolCallResult?: unknown }).toolCallResult;
+        const toolCalls = (message as { toolCalls?: unknown[] }).toolCalls;
+        const calls: unknown[] = Array.isArray(toolCalls)
+          ? toolCalls
+          : toolCallResult != null
+            ? [toolCallResult]
+            : [];
+
+        const tryEmit = (data: Record<string, unknown>, name?: string) => {
+          if (Array.isArray(data.providers)) {
+            onToolResultRef.current?.({
+              tool: 'findProviders',
+              providers: data.providers,
+              disclaimer: typeof data.disclaimer === 'string' ? data.disclaimer : undefined,
+            });
+            return true;
+          }
+          if (Array.isArray(data.resources)) {
+            onToolResultRef.current?.({
+              tool: 'getRagResources',
+              resources: data.resources,
+            });
+            return true;
+          }
+          return false;
+        };
+
+        for (const tc of calls) {
+          const tcObj = tc as Record<string, unknown>;
+          const name = tcObj?.name as string | undefined;
+          let result = tcObj?.result;
+          if (result == null) result = tcObj;
+          if (typeof result === 'string') {
+            try {
+              result = JSON.parse(result) as Record<string, unknown>;
+            } catch {
+              continue;
+            }
+          }
+          const data = typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : {};
+          if (tryEmit(data)) continue;
+          if (name === 'findProviders' || name === 'getRagResources') tryEmit(data);
+        }
       }
     };
     const onSpeechStart = () => onSpeechStartRef.current?.();
@@ -123,6 +190,12 @@ export function useVapiVoice({
     const onError = (e: unknown) => {
       const errMsg =
         e instanceof Error ? e.message : typeof e === 'string' ? e : 'Voice error';
+      if (
+        typeof errMsg === 'string' &&
+        (errMsg.includes('Meeting ended') || errMsg.includes('Meeting has ended') || errMsg.includes('ejection'))
+      ) {
+        return;
+      }
       setError(errMsg);
       setStarting(false);
       setConnected(false);

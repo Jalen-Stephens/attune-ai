@@ -52,6 +52,7 @@ Use the same secret when configuring the tool URLs in the Vapi Dashboard. Vapi w
 
 ```json
 {
+  "sessionId": "eelfccd3-3d33-47eb-9b04-a92e4961d22d",
   "zip": "94102",
   "specialty": "therapy",
   "modality": "telehealth",
@@ -62,6 +63,7 @@ Use the same secret when configuring the tool URLs in the Vapi Dashboard. Vapi w
 
 | Field          | Type     | Required | Description                                                                 |
 |----------------|----------|----------|-----------------------------------------------------------------------------|
+| `sessionId`    | string   | No       | If provided, result is cached for Dashboard display (pass `{{sessionId}}` from Vapi) |
 | `zip`          | string   | Yes      | ZIP code for location search                                                |
 | `specialty`    | string   | Yes      | One of: `therapy`, `psychiatry`, `couples`, `sleep`, `anxiety`, `depression`, `addiction`, `general` |
 | `modality`     | string   | Yes      | One of: `telehealth`, `in_person`, `either`                                |
@@ -162,6 +164,30 @@ curl -X POST http://localhost:3000/api/tools/getRagResources \
     "agentId": null
   }'
 ```
+
+---
+
+## Dashboard Chat Display
+
+When Peter calls `findProviders` or `getRagResources` during a voice call, the results appear in the **Dashboard chat** as clickable cards while the agent is speaking. Users can click provider booking links or resource links without waiting.
+
+**Requirement:** Enable `tool-calls-result` in your assistant's **Client Messages** so the Web SDK receives tool results:
+
+1. Vapi Dashboard → Assistants → select Peter
+2. Under **Messages** (or **Advanced**), find **Client Messages**
+3. Add `tool-calls-result` to the list (e.g. `transcript`, `tool-calls`, `tool-calls-result`)
+4. Save
+
+The Dashboard subscribes to tool results and renders provider cards (with Book links) and resource cards (with Open/Preview) in real time.
+
+**Important:** Use the **Dashboard** at `/dashboard` (not the Voice demo at `/voice`). Tool results only appear when you start the voice call from the Dashboard chat.
+
+**Fallback (polling):** Vapi may not always send `tool-calls-result` to the client. As a fallback, the Dashboard **polls** `/api/sessions/[sessionId]/tool-results` every 2 seconds during an active call. For this to work:
+
+1. **findProviders** — Add `sessionId` as an optional parameter to the tool in Vapi and map it to `{{sessionId}}` (from variableValues). Our API will cache the result.
+2. **getRagResources** — Already receives `sessionId`; results are cached automatically.
+
+If you add `sessionId` to findProviders in the Vapi Dashboard (Tools → findProviders → Request Body → add `sessionId` with value `{{sessionId}}`), provider cards will appear within ~2 seconds of Peter calling the tool.
 
 ---
 
