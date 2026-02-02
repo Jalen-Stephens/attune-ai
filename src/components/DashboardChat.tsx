@@ -52,38 +52,111 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
     sessionIdRef.current = sessionId;
   }, [sessionId]);
 
-  const pollAndAppendCleanTranscript = React.useCallback(
+  const pollAndSyncTranscript = React.useCallback(
     async (vapiCallId: string) => {
       const maxAttempts = 6;
       const delayMs = 1500;
+      const sid = sessionIdRef.current;
+      if (!sid) return;
+
       for (let i = 0; i < maxAttempts; i++) {
         try {
           const res = await fetch(`/api/sessions/by-vapi-call/${encodeURIComponent(vapiCallId)}`);
           const data = await res.json();
           const transcript = data.transcript ?? [];
           const summary = data.summary ?? null;
+          const voiceSessionId = data.sessionId ?? null;
           if (transcript.length > 0 || (summary && typeof summary === 'string')) {
+            await fetch('/api/sessions/link-voice-call', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId: sid, vapiCallId }),
+            }).catch(() => {});
+
+            await new Promise((r) => setTimeout(r, 400));
+            const timelineUrl = voiceSessionId
+              ? `/api/sessions/${sid}/timeline?voiceSessionId=${encodeURIComponent(voiceSessionId)}`
+              : `/api/sessions/${sid}/timeline`;
+            const timelineRes = await fetch(timelineUrl);
+            if (timelineRes.ok) {
+              const { timeline } = await timelineRes.json();
+              if (Array.isArray(timeline) && timeline.length > 0) {
+                const base = `voice-timeline-${Date.now()}`;
+                const timelineTurns: ConversationTurn[] = timeline
+                  .map(
+                    (
+                      item: {
+                        type: string;
+                        turn?: { role: string; text: string };
+                        tool?: string;
+                        payload?: Record<string, unknown>;
+                      },
+                      idx: number
+                    ): ConversationTurn | null => {
+                      if (item.type === 'transcript' && item.turn) {
+                        const text = item.turn.text;
+                        return {
+                          id: `${base}-t-${idx}`,
+                          role: item.turn.role as 'user' | 'assistant',
+                          voiceText: typeof text === 'string' ? text : String(text ?? ''),
+                          source: 'voice',
+                        };
+                      }
+                      if (item.type === 'tool' && item.tool === 'findProviders') {
+                        const providers = (item.payload?.providers ?? []) as Array<Record<string, unknown>>;
+                        return {
+                          id: `${base}-p-${idx}`,
+                          role: 'assistant',
+                          toolResult: {
+                            tool: 'findProviders',
+                            providers,
+                            disclaimer: item.payload?.disclaimer as string | undefined,
+                          },
+                          source: 'voice',
+                        };
+                      }
+                      if (item.type === 'tool' && item.tool === 'getRagResources') {
+                        const resources = (item.payload?.resources ?? []) as Array<Record<string, unknown>>;
+                        return {
+                          id: `${base}-r-${idx}`,
+                          role: 'assistant',
+                          toolResult: {
+                            tool: 'getRagResources',
+                            resources,
+                          },
+                          source: 'voice',
+                        };
+                      }
+                      return null;
+                    }
+                  )
+                  .filter((t): t is ConversationTurn => t != null);
+
+                setTurns((prev) => {
+                  const typedTurns = prev.filter((t) => t.source === 'typed');
+                  return [...typedTurns, ...timelineTurns];
+                });
+                return;
+              }
+            }
+
             setTurns((prev) => {
-              const withoutConnecting = prev.filter((t) => !t.isConnecting);
+              const typedTurns = prev.filter((t) => t.source === 'typed');
+              const liveToolTurns = prev.filter((t) => t.toolResult);
               const base = `voice-clean-${Date.now()}`;
               const voiceTurns: ConversationTurn[] = transcript.map(
-                (t: { role: string; text: string }, i: number) => ({
-                  id: `${base}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-                  role: t.role as 'user' | 'assistant',
-                  voiceText: t.text,
-                  source: 'voice',
-                })
+                (t: { role: string; text?: string; content?: string }, idx: number) => {
+                  const text = t.text ?? t.content;
+                  return {
+                    id: `${base}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
+                    role: t.role as 'user' | 'assistant',
+                    voiceText: typeof text === 'string' ? text : String(text ?? ''),
+                    source: 'voice' as const,
+                  };
+                }
               );
-              return [...withoutConnecting, ...voiceTurns];
+              return [...typedTurns, ...liveToolTurns, ...voiceTurns];
             });
-            const sid = sessionIdRef.current;
-            if (sid) {
-              fetch('/api/sessions/link-voice-call', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionId: sid, vapiCallId }),
-              }).catch(() => {});
-            }
             return;
           }
         } catch (_) {
@@ -97,9 +170,10 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
 
   const onCallEnd = React.useCallback(
     (vapiCallId: string | null) => {
-      if (vapiCallId) pollAndAppendCleanTranscript(vapiCallId);
+      setError(null);
+      if (vapiCallId) pollAndSyncTranscript(vapiCallId);
     },
-    [pollAndAppendCleanTranscript]
+    [pollAndSyncTranscript]
   );
 
   const onToolResult = React.useCallback((result: VapiToolResult) => {
@@ -344,9 +418,11 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
                         turn.role === 'user' ? 'justify-end' : 'justify-start'
                       )}
                     >
-                      {turn.role === 'user' && userText && (
+                      {turn.role === 'user' && userText != null && (
                         <div className="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-md bg-primary text-primary-foreground px-4 py-3 shadow-sm">
-                          <p className="text-sm whitespace-pre-wrap">{userText}</p>
+                          <p className="text-sm whitespace-pre-wrap">
+                            {typeof userText === 'string' ? userText : ''}
+                          </p>
                           {turn.source === 'voice' && (
                             <p className="text-xs text-primary-foreground/70 mt-1">Voice</p>
                           )}
@@ -399,14 +475,16 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
                           <p className="text-xs text-muted-foreground mt-2">From voice call</p>
                         </div>
                       )}
-                      {turn.role === 'assistant' && turn.voiceText && !turn.assistantData && !turn.toolResult && (
+                      {turn.role === 'assistant' && turn.voiceText != null && !turn.assistantData && !turn.toolResult && (
                         <div
                           className={cn(
                             'max-w-[95%] sm:max-w-[85%] rounded-2xl rounded-bl-md border bg-card px-4 py-4 shadow-sm',
                             turn.isConnecting && 'border-primary/30 bg-primary/5'
                           )}
                         >
-                          <p className="text-sm whitespace-pre-wrap">{turn.voiceText}</p>
+                          <p className="text-sm whitespace-pre-wrap">
+                            {typeof turn.voiceText === 'string' ? turn.voiceText : ''}
+                          </p>
                           {!turn.isConnecting && (
                             <p className="text-xs text-muted-foreground mt-2">Voice</p>
                           )}
@@ -451,7 +529,12 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
             {(error || voiceError) && (
               <div className="max-w-3xl mx-auto w-full px-4 pb-4">
                 <div className="rounded-xl border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
-                  {error ?? voiceError}
+                  {(() => {
+                    const e = error ?? voiceError;
+                    if (typeof e === 'string') return e;
+                    if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
+                    return 'Something went wrong';
+                  })()}
                 </div>
               </div>
             )}

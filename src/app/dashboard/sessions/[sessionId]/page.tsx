@@ -1,5 +1,6 @@
-import { getSessionDetail, getIntake, getReferrals, getSuggestionsForSession } from '@/lib/db';
-import TranscriptViewer from '@/components/TranscriptViewer';
+import { getSessionDetail, getIntake, getReferrals, getSuggestionsForSession, getSessionTimeline, getSessionResources } from '@/lib/db';
+import SessionTimelineViewer from '@/components/SessionTimelineViewer';
+import ResourcesTabContent from '@/components/ResourcesTabContent';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import GenerateSummaryButton from './GenerateSummaryButton';
@@ -7,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Calendar, Clock, MessageSquare, FileText, UserCheck, ArrowRight } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, MessageSquare, FileText, UserCheck, ArrowRight, BookOpen } from 'lucide-react';
 
 interface PageProps {
   params: Promise<{ sessionId: string }>;
@@ -16,12 +17,14 @@ interface PageProps {
 export default async function SessionDetailPage({ params }: PageProps) {
   const { sessionId } = await params;
   
-  let sessionData, intake, referrals;
+  let sessionData, intake, referrals, timeline, sessionResources;
   try {
-    [sessionData, intake, referrals] = await Promise.all([
+    [sessionData, intake, referrals, timeline, sessionResources] = await Promise.all([
       getSessionDetail(sessionId),
       getIntake(sessionId),
       getReferrals(sessionId),
+      getSessionTimeline(sessionId),
+      getSessionResources(sessionId),
     ]);
   } catch (error) {
     notFound();
@@ -191,6 +194,10 @@ export default async function SessionDetailPage({ params }: PageProps) {
             <MessageSquare className="h-4 w-4" />
             Transcript
           </TabsTrigger>
+          <TabsTrigger value="resources" className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4" />
+            Resources
+          </TabsTrigger>
           <TabsTrigger value="summary" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             Summary
@@ -202,15 +209,37 @@ export default async function SessionDetailPage({ params }: PageProps) {
             <CardHeader>
               <CardTitle>Conversation Transcript</CardTitle>
               <CardDescription>
-                {transcript.length} {transcript.length === 1 ? 'message' : 'messages'}
+                Messages and resources shared during the session, in order
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <TranscriptViewer
-                turns={transcript}
+              <SessionTimelineViewer
+                items={timeline}
                 userDisplayName={userDisplayName}
-                suggestionsByTurnId={suggestionsByTurnId}
               />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="resources" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Resources Provided</CardTitle>
+              <CardDescription>
+                All providers and resources shared with you during this session
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {sessionResources.length > 0 ? (
+                <ResourcesTabContent items={sessionResources} />
+              ) : (
+                <div className="py-12 text-center">
+                  <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">
+                    No resources were shared during this session.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

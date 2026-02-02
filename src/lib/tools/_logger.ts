@@ -24,18 +24,29 @@ export async function logToolCall(params: ToolLogParams): Promise<void> {
     console.error(logLine);
   }
 
-  if (sessionId && success === false) {
+  if (sessionId) {
     try {
       const supabase = createServiceRoleClient();
-      await supabase.from('events').insert({
-        session_id: sessionId,
-        event_type: `tool_${toolName}_failed`,
-        payload_json: {
-          duration_ms: durationMs,
-          error: errorMessage,
-          ...payload,
-        },
-      });
+      if (success) {
+        await supabase.from('events').insert({
+          session_id: sessionId,
+          event_type: `tool_${toolName}`,
+          payload_json: {
+            duration_ms: durationMs,
+            ...payload,
+          },
+        });
+      } else {
+        await supabase.from('events').insert({
+          session_id: sessionId,
+          event_type: `tool_${toolName}_failed`,
+          payload_json: {
+            duration_ms: durationMs,
+            error: errorMessage,
+            ...payload,
+          },
+        });
+      }
     } catch (err) {
       console.error('Failed to insert tool event:', err);
     }

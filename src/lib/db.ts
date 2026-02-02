@@ -545,6 +545,174 @@ export async function getReferrals(sessionId: string): Promise<Referral[]> {
   return data || [];
 }
 
+/** Session resource (providers or RAG resources) delivered during voice call */
+export interface SessionResource {
+  id: string;
+  session_id: string;
+  kind: 'provider' | 'resource';
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+/**
+ * Insert a session resource (provider list or RAG resources). Uses service role for tool routes.
+ */
+export async function insertSessionResource(
+  sessionId: string,
+  kind: 'provider' | 'resource',
+  payload: Record<string, unknown>
+): Promise<void> {
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase.from('session_resources').insert({
+    session_id: sessionId,
+    kind,
+    payload,
+  });
+  if (error) throw new Error(`Failed to insert session resource: ${error.message}`);
+}
+
+/**
+ * Copy tool events (tool_findProviders, tool_getRagResources) from one session to another.
+ * Uses service role. Used when linking voice call to dashboard session.
+ */
+export async function copyToolEvents(
+  fromSessionId: string,
+  toSessionId: string
+): Promise<void> {
+  if (fromSessionId === toSessionId) return;
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from('events')
+    .select('event_type, payload_json, created_at')
+    .eq('session_id', fromSessionId)
+    .in('event_type', ['tool_findProviders', 'tool_getRagResources'])
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(`Failed to fetch tool events: ${error.message}`);
+  if (!data?.length) return;
+  for (const row of data) {
+    const { error: insErr } = await supabase.from('events').insert({
+      session_id: toSessionId,
+      event_type: row.event_type,
+      payload_json: row.payload_json,
+      created_at: row.created_at ?? new Date().toISOString(),
+    });
+    if (insErr) throw new Error(`Failed to copy tool event: ${insErr.message}`);
+  }
+}
+
+/**
+ * Copy session_resources from one session to another. Uses service role.
+ * Used when linking voice call to dashboard session.
+ */
+export async function copySessionResources(
+  fromSessionId: string,
+  toSessionId: string
+): Promise<void> {
+  if (fromSessionId === toSessionId) return;
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from('session_resources')
+    .select('kind, payload')
+    .eq('session_id', fromSessionId)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(`Failed to fetch session resources: ${error.message}`);
+  if (!data?.length) return;
+  for (const row of data) {
+    const { error: insErr } = await supabase.from('session_resources').insert({
+      session_id: toSessionId,
+      kind: row.kind,
+      payload: row.payload,
+    });
+    if (insErr) throw new Error(`Failed to copy session resource: ${insErr.message}`);
+  }
+}
+
+/**
+ * Get all session resources (providers and RAG resources) for a session, ordered by created_at.
+ */
+export async function getSessionResources(sessionId: string): Promise<SessionResource[]> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase
+    .from('session_resources')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(`Failed to get session resources: ${error.message}`);
+  return (data ?? []) as SessionResource[];
+}
+
+/** Timeline item: transcript turn or tool event */
+export type SessionTimelineItem =
+  | { type: 'transcript'; turn: TranscriptTurn }
+  | { type: 'tool'; tool: 'findProviders' | 'getRagResources'; timestamp: string; payload: Record<string, unknown> };
+
+/**
+ * Get unified session timeline: transcript turns + tool events (findProviders, getRagResources)
+ * merged in chronological order for display.
+ * If voiceSessionId is provided, also fetches tool events from that session (tools may log to either).
+ * Uses service role for voice session events (voice sessions have user_id=null, RLS would block).
+ */
+export async function getSessionTimeline(
+  sessionId: string,
+  voiceSessionId?: string
+): Promise<SessionTimelineItem[]> {
+  const supabase = await createServerClient();
+  const supabaseAdmin = createServiceRoleClient();
+
+  const [transcriptRes, dashboardEventsRes, voiceEventsRes] = await Promise.all([
+    supabase
+      .from('transcript_turns')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('timestamp', { ascending: true }),
+    supabase
+      .from('events')
+      .select('id, event_type, payload_json, created_at')
+      .eq('session_id', sessionId)
+      .in('event_type', ['tool_findProviders', 'tool_getRagResources'])
+      .order('created_at', { ascending: true }),
+    voiceSessionId && voiceSessionId !== sessionId
+      ? supabaseAdmin
+          .from('events')
+          .select('id, event_type, payload_json, created_at')
+          .eq('session_id', voiceSessionId)
+          .in('event_type', ['tool_findProviders', 'tool_getRagResources'])
+          .order('created_at', { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (transcriptRes.error) throw new Error(`Failed to get transcript: ${transcriptRes.error.message}`);
+
+  const allEventRows: { event_type: string; payload_json: unknown; created_at: string }[] = [
+    ...((dashboardEventsRes.data ?? []) as typeof allEventRows),
+    ...((voiceEventsRes.data ?? []) as typeof allEventRows),
+  ];
+  allEventRows.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  const transcriptItems: SessionTimelineItem[] = (transcriptRes.data ?? []).map((t) => ({
+    type: 'transcript' as const,
+    turn: t as TranscriptTurn,
+  }));
+
+  const toolItems: SessionTimelineItem[] = allEventRows.map((e) => {
+    const tool = e.event_type === 'tool_findProviders' ? 'findProviders' : 'getRagResources';
+    return {
+      type: 'tool' as const,
+      tool,
+      timestamp: e.created_at ?? new Date().toISOString(),
+      payload: (e.payload_json as Record<string, unknown>) ?? {},
+    };
+  });
+
+  const all: SessionTimelineItem[] = [...transcriptItems, ...toolItems];
+  all.sort((a, b) => {
+    const tsA = a.type === 'transcript' ? a.turn.timestamp : a.timestamp;
+    const tsB = b.type === 'transcript' ? b.turn.timestamp : b.timestamp;
+    return new Date(tsA).getTime() - new Date(tsB).getTime();
+  });
+  return all;
+}
+
 /**
  * Log an event
  */

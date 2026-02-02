@@ -52,15 +52,25 @@ export async function POST(request: NextRequest) {
         const detail = await getSessionByVapiCallId(callId);
         if (detail) {
           const artifactMessages = msg.artifact?.messages ?? (payload as any).artifact?.messages ?? [];
-          const turns = artifactMessages
+          const sessionStart = new Date(detail.session.started_at).getTime();
+          const estimatedSecPerMsg = 12; // fallback when Vapi omits time
+          const sorted = [...artifactMessages]
             .filter((m: { role?: string }) => m.role === 'user' || m.role === 'bot')
-            .sort((a: { time?: number }, b: { time?: number }) => (a.time ?? 0) - (b.time ?? 0))
-            .map((m: { role?: string; message?: string; content?: string; time?: number }) => ({
-              role: (m.role === 'bot' ? 'assistant' : 'user') as 'user' | 'assistant',
-              text: ((m.message ?? (m as { content?: string }).content) ?? '').trim(),
-              timestamp: m.time ? new Date(m.time).toISOString() : undefined,
-            }))
-            .filter((t: { text: string }) => !!t.text);
+            .sort((a: { time?: number }, b: { time?: number }) => (a.time ?? 0) - (b.time ?? 0));
+          const turns = sorted
+            .map((m: { role?: string; message?: string; content?: string; time?: number }, i: number) => {
+              const text = ((m.message ?? (m as { content?: string }).content) ?? '').trim();
+              if (!text) return null;
+              const ts = m.time
+                ? new Date(m.time).toISOString()
+                : new Date(sessionStart + i * estimatedSecPerMsg * 1000).toISOString();
+              return {
+                role: (m.role === 'bot' ? 'assistant' : 'user') as 'user' | 'assistant',
+                text,
+                timestamp: ts,
+              };
+            })
+            .filter((t): t is { role: 'user' | 'assistant'; text: string; timestamp: string } => t !== null);
           if (turns.length) await replaceTranscriptTurns(detail.session.id, turns);
           const summary = msg.analysis?.summary ?? (payload as any).analysis?.summary;
           if (typeof summary === 'string' && summary.trim()) {

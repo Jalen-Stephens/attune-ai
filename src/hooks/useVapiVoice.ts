@@ -188,15 +188,24 @@ export function useVapiVoice({
     const onSpeechStart = () => onSpeechStartRef.current?.();
     const onSpeechEnd = () => onSpeechEndRef.current?.();
     const onError = (e: unknown) => {
-      const errMsg =
-        e instanceof Error ? e.message : typeof e === 'string' ? e : 'Voice error';
-      if (
+      let errMsg = 'Voice error';
+      if (e instanceof Error) errMsg = e.message;
+      else if (typeof e === 'string') errMsg = e;
+      else if (e && typeof e === 'object' && 'message' in e) {
+        const m = (e as { message: unknown }).message;
+        if (typeof m === 'string') errMsg = m;
+        else if (m != null) errMsg = String(m);
+      } else if (e != null) errMsg = String(e);
+
+      const isNormalEnd =
         typeof errMsg === 'string' &&
-        (errMsg.includes('Meeting ended') || errMsg.includes('Meeting has ended') || errMsg.includes('ejection'))
-      ) {
-        return;
-      }
-      setError(errMsg);
+        (errMsg.includes('Meeting ended') ||
+          errMsg.includes('Meeting has ended') ||
+          errMsg.includes('ejection') ||
+          errMsg.includes('due to ejection') ||
+          errMsg.toLowerCase().includes('call ended'));
+      if (isNormalEnd) return;
+      setError(typeof errMsg === 'string' ? errMsg : 'Voice error');
       setStarting(false);
       setConnected(false);
     };
@@ -270,19 +279,28 @@ export function useVapiVoice({
               firstMessage: buildFirstMessageFromContext(ctx),
               variableValues,
             };
-            if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-              console.log('[Vapi] variableValues', variableValues);
+            if (typeof window !== 'undefined') {
+              console.log('[Vapi] call initiation payload:', JSON.stringify({
+                assistantId,
+                sessionId,
+                variableValues,
+                firstMessage: assistantOverrides.firstMessage,
+                sessionIdInVariableValues: variableValues.sessionId,
+              }, null, 2));
             }
           } else {
-            if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-              console.warn('[Vapi] call-context returned', res.status);
+            if (typeof window !== 'undefined') {
+              console.warn('[Vapi] call-context returned', res.status, '- no variableValues/sessionId will be passed');
             }
           }
         } catch (e) {
-          if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+          if (typeof window !== 'undefined') {
             console.warn('[Vapi] call-context failed, starting with generic greeting', e);
           }
         }
+      }
+      if (typeof window !== 'undefined' && !assistantOverrides) {
+        console.log('[Vapi] call initiation: no sessionId provided, starting without variableValues');
       }
       await vapiRef.current.start(assistantId, assistantOverrides as Parameters<Vapi['start']>[1]);
     } catch (e) {

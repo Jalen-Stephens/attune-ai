@@ -4,6 +4,7 @@ import { validateVapiSecret } from '@/lib/tools/_auth';
 import { logToolCall } from '@/lib/tools/_logger';
 import { storeGetRagResources } from '@/lib/tools/_toolResultCache';
 import { handleGetRagResources } from '@/lib/tools/getRagResources/handler';
+import { insertSessionResource } from '@/lib/db';
 
 const GetRagResourcesSchema = z.object({
   sessionId: z.string().min(1, 'sessionId is required'),
@@ -45,6 +46,9 @@ export async function POST(request: NextRequest) {
     });
 
     storeGetRagResources(parsed.data.sessionId, result.resources);
+    await insertSessionResource(parsed.data.sessionId, 'resource', {
+      resources: result.resources,
+    });
 
     if (process.env.NODE_ENV === 'development') {
       console.log('[getRagResources] stored', result.resources.length, 'resources for session', parsed.data.sessionId);
@@ -55,6 +59,7 @@ export async function POST(request: NextRequest) {
       sessionId,
       success: true,
       durationMs: Date.now() - start,
+      payload: { resources: result.resources },
     });
 
     return NextResponse.json(result);

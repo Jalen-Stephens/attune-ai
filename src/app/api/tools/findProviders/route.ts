@@ -4,6 +4,7 @@ import { validateVapiSecret } from '@/lib/tools/_auth';
 import { logToolCall } from '@/lib/tools/_logger';
 import { storeFindProviders } from '@/lib/tools/_toolResultCache';
 import { handleFindProviders } from '@/lib/tools/findProviders/handler';
+import { insertSessionResource } from '@/lib/db';
 
 const FindProvidersSchema = z.object({
   sessionId: z.string().optional(),
@@ -60,6 +61,10 @@ export async function POST(request: NextRequest) {
 
     if (parsed.data.sessionId) {
       storeFindProviders(parsed.data.sessionId, result.providers, result.disclaimer);
+      await insertSessionResource(parsed.data.sessionId, 'provider', {
+        providers: result.providers,
+        disclaimer: result.disclaimer,
+      });
     }
 
     await logToolCall({
@@ -67,6 +72,7 @@ export async function POST(request: NextRequest) {
       sessionId: parsed.data.sessionId ?? null,
       success: true,
       durationMs: Date.now() - start,
+      payload: { providers: result.providers, disclaimer: result.disclaimer },
     });
 
     return NextResponse.json(result);

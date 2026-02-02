@@ -7,6 +7,8 @@ import {
   appendTranscriptTurns,
   saveSummaryServiceRole,
   endSessionServiceRole,
+  copySessionResources,
+  copyToolEvents,
 } from '@/lib/db';
 
 const LinkVoiceCallSchema = z.object({
@@ -46,6 +48,8 @@ export async function POST(request: NextRequest) {
     if (voice.summary?.summary_text?.trim()) {
       await saveSummaryServiceRole(sessionId, voice.summary.summary_text.trim());
     }
+    await copySessionResources(voice.session.id, sessionId);
+    await copyToolEvents(voice.session.id, sessionId);
     await endSessionServiceRole(sessionId);
 
     return NextResponse.json({ linked: true }, { status: 200 });
