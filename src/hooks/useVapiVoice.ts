@@ -5,6 +5,7 @@ import Vapi from '@vapi-ai/web';
 import { validateVapiEnv } from '@/lib/vapi-env';
 import type { CallContextResponse } from '@/lib/vapi/types';
 import { sanitizeChatSummary } from '@/lib/vapi/call-context-summary';
+import { toDisplayText } from '@/lib/utils';
 
 export type VoiceTranscriptTurn = { role: 'user' | 'assistant'; text: string };
 
@@ -21,6 +22,20 @@ type VapiMessage = {
 export type VapiToolResult =
   | { tool: 'findProviders'; providers: Array<Record<string, unknown>>; disclaimer?: string }
   | { tool: 'getRagResources'; resources: Array<Record<string, unknown>> };
+
+function isMeetingEndedNoise(err: unknown): boolean {
+  const msg =
+    typeof err === 'string'
+      ? err
+      : err instanceof Error
+        ? err.message
+        : err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : err && typeof err === 'object' && 'error' in err && typeof (err as { error: unknown }).error === 'object'
+            ? String((err as { error: { message?: string } }).error?.message ?? '')
+            : '';
+  return /Meeting ended due to ejection|Meeting has ended|ejection|due to ejection|call ended/i.test(msg);
+}
 
 /**
  * Build generic first message using name only. chatSummary is passed via variableValues
@@ -72,6 +87,8 @@ export function useVapiVoice({
   const [error, setError] = useState<string | null>(null);
   const vapiRef = useRef<Vapi | null>(null);
   const vapiCallIdRef = useRef<string | null>(null);
+  const didTeardownRef = useRef(false);
+  const teardownOnceRef = useRef<(reason: string) => void>(() => {});
   const handlersRef = useRef<{
     callStart: () => void;
     callStartSuccess: (e: { callId?: string }) => void;
@@ -108,7 +125,37 @@ export function useVapiVoice({
     const vapi = new Vapi(publicKey);
     vapiRef.current = vapi;
 
+    const teardownOnce = (reason: string) => {
+      if (didTeardownRef.current) return;
+      didTeardownRef.current = true;
+      const callId = vapiCallIdRef.current;
+      vapiCallIdRef.current = null;
+      const v = vapiRef.current;
+      if (v) {
+        const h = handlersRef.current;
+        if (h && typeof (v as { off?: (e: string, fn: unknown) => void }).off === 'function') {
+          (v as { off: (e: string, fn: unknown) => void }).off('call-start', h.callStart);
+          (v as { off: (e: string, fn: unknown) => void }).off('call-start-success', h.callStartSuccess);
+          (v as { off: (e: string, fn: unknown) => void }).off('call-end', h.callEnd);
+          (v as { off: (e: string, fn: unknown) => void }).off('message', h.message);
+          (v as { off: (e: string, fn: unknown) => void }).off('speech-start', h.speechStart);
+          (v as { off: (e: string, fn: unknown) => void }).off('speech-end', h.speechEnd);
+          (v as { off: (e: string, fn: unknown) => void }).off('error', h.error);
+        }
+        Promise.resolve(v.stop()).catch(() => {
+          /* ignore e.g. "Meeting ended due to ejection: Meeting has ended" */
+        });
+        vapiRef.current = null;
+        handlersRef.current = null;
+      }
+      setConnected(false);
+      setStarting(false);
+      onCallEndRef.current?.(callId);
+    };
+    teardownOnceRef.current = teardownOnce;
+
     const onCallStart = () => {
+      didTeardownRef.current = false;
       setConnected(true);
       setStarting(false);
       setError(null);
@@ -117,23 +164,24 @@ export function useVapiVoice({
       if (e?.callId && e.callId !== 'unknown') vapiCallIdRef.current = e.callId;
     };
     const onCallEnd = () => {
-      const callId = vapiCallIdRef.current;
-      vapiCallIdRef.current = null;
-      setConnected(false);
-      setStarting(false);
-      onCallEndRef.current?.(callId);
+      teardownOnce('ended');
     };
     const onMessage = (message: VapiMessage) => {
+      const msgType = message?.type ?? (message as { message?: { type?: string } }).message?.type;
+      const allowedTypes = ['transcript', 'tool-calls-result', 'function-call-result'];
+      if (msgType && !allowedTypes.includes(msgType)) return;
+
       if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-        const t = message.type ?? (message as { message?: { type?: string } }).message?.type;
-        if (t && ['tool-calls-result', 'function-call-result', 'tool-calls', 'function-call'].includes(t)) {
-          console.log('[Vapi] message type:', t, message);
+        if (msgType && ['tool-calls-result', 'function-call-result', 'tool-calls', 'function-call'].includes(msgType)) {
+          console.log('[Vapi] message type:', msgType, message);
         }
       }
-      if (message.type === 'transcript' && message.role && message.transcript) {
-        const role = message.role as 'user' | 'assistant';
-        const text = message.transcript as string;
-        onTranscriptRef.current?.({ role, text });
+      if (message.type === 'transcript' && message.role) {
+        const text = toDisplayText(message.transcript) ?? '';
+        if (text) {
+          const role = message.role as 'user' | 'assistant';
+          onTranscriptRef.current?.({ role, text });
+        }
         return;
       }
       if (message.type === 'tool-calls-result' || message.type === 'function-call-result') {
@@ -188,6 +236,10 @@ export function useVapiVoice({
     const onSpeechStart = () => onSpeechStartRef.current?.();
     const onSpeechEnd = () => onSpeechEndRef.current?.();
     const onError = (e: unknown) => {
+      if (isMeetingEndedNoise(e)) {
+        teardownOnce('ended');
+        return;
+      }
       let errMsg = 'Voice error';
       if (e instanceof Error) errMsg = e.message;
       else if (typeof e === 'string') errMsg = e;
@@ -196,18 +248,8 @@ export function useVapiVoice({
         if (typeof m === 'string') errMsg = m;
         else if (m != null) errMsg = String(m);
       } else if (e != null) errMsg = String(e);
-
-      const isNormalEnd =
-        typeof errMsg === 'string' &&
-        (errMsg.includes('Meeting ended') ||
-          errMsg.includes('Meeting has ended') ||
-          errMsg.includes('ejection') ||
-          errMsg.includes('due to ejection') ||
-          errMsg.toLowerCase().includes('call ended'));
-      if (isNormalEnd) return;
       setError(typeof errMsg === 'string' ? errMsg : 'Voice error');
-      setStarting(false);
-      setConnected(false);
+      teardownOnce('error');
     };
 
     handlersRef.current = {
@@ -228,22 +270,7 @@ export function useVapiVoice({
     vapi.on('error', onError);
 
     return () => {
-      const v = vapiRef.current;
-      if (v) {
-        v.stop();
-        const h = handlersRef.current;
-        if (h && typeof (v as { off?: (e: string, fn: () => void) => void }).off === 'function') {
-          (v as { off: (e: string, fn: () => void) => void }).off('call-start', h.callStart);
-          (v as { off: (e: string, fn: (e: { callId?: string }) => void) => void }).off('call-start-success', h.callStartSuccess);
-          (v as { off: (e: string, fn: (m: VapiMessage) => void) => void }).off('call-end', h.callEnd);
-          (v as { off: (e: string, fn: (m: VapiMessage) => void) => void }).off('message', h.message);
-          (v as { off: (e: string, fn: () => void) => void }).off('speech-start', h.speechStart);
-          (v as { off: (e: string, fn: () => void) => void }).off('speech-end', h.speechEnd);
-          (v as { off: (e: string, fn: (e: unknown) => void) => void }).off('error', h.error);
-        }
-        vapiRef.current = null;
-        handlersRef.current = null;
-      }
+      teardownOnce('unmount');
     };
   }, [publicKey, assistantId]);
 
@@ -313,9 +340,7 @@ export function useVapiVoice({
   }, [assistantId, isReady]);
 
   const stopVoice = useCallback(() => {
-    vapiRef.current?.stop();
-    setConnected(false);
-    setStarting(false);
+    teardownOnceRef.current?.('user');
   }, []);
 
   return {

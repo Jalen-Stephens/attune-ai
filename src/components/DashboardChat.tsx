@@ -8,7 +8,8 @@ import { SuggestedResources } from './SuggestedResources';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useVapiVoice, type VapiToolResult } from '@/hooks/useVapiVoice';
 import { VoiceOscillatingIcon } from '@/components/voice/VoiceOscillatingIcon';
-import { cn } from '@/lib/utils';
+import { cn, toDisplayText, isCallEndedNoise } from '@/lib/utils';
+import { PhoneOff } from 'lucide-react';
 
 const SUGGESTION_CARDS = [
   { text: "I can't sleep and my mind is racing.", label: 'Sleep & racing thoughts' },
@@ -94,11 +95,11 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
                       idx: number
                     ): ConversationTurn | null => {
                       if (item.type === 'transcript' && item.turn) {
-                        const text = item.turn.text;
+                        const text = toDisplayText(item.turn.text) ?? '';
                         return {
                           id: `${base}-t-${idx}`,
                           role: item.turn.role as 'user' | 'assistant',
-                          voiceText: typeof text === 'string' ? text : String(text ?? ''),
+                          voiceText: text,
                           source: 'voice',
                         };
                       }
@@ -146,11 +147,11 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
               const base = `voice-clean-${Date.now()}`;
               const voiceTurns: ConversationTurn[] = transcript.map(
                 (t: { role: string; text?: string; content?: string }, idx: number) => {
-                  const text = t.text ?? t.content;
+                  const text = toDisplayText(t.text ?? t.content) ?? '';
                   return {
                     id: `${base}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
                     role: t.role as 'user' | 'assistant',
-                    voiceText: typeof text === 'string' ? text : String(text ?? ''),
+                    voiceText: text,
                     source: 'voice' as const,
                   };
                 }
@@ -421,7 +422,7 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
                       {turn.role === 'user' && userText != null && (
                         <div className="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-md bg-primary text-primary-foreground px-4 py-3 shadow-sm">
                           <p className="text-sm whitespace-pre-wrap">
-                            {typeof userText === 'string' ? userText : ''}
+                            {toDisplayText(userText) ?? ''}
                           </p>
                           {turn.source === 'voice' && (
                             <p className="text-xs text-primary-foreground/70 mt-1">Voice</p>
@@ -483,7 +484,7 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
                           )}
                         >
                           <p className="text-sm whitespace-pre-wrap">
-                            {typeof turn.voiceText === 'string' ? turn.voiceText : ''}
+                            {toDisplayText(turn.voiceText) ?? ''}
                           </p>
                           {!turn.isConnecting && (
                             <p className="text-xs text-muted-foreground mt-2">Voice</p>
@@ -526,18 +527,53 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
               </div>
             )}
 
-            {(error || voiceError) && (
-              <div className="max-w-3xl mx-auto w-full px-4 pb-4">
-                <div className="rounded-xl border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
-                  {(() => {
-                    const e = error ?? voiceError;
-                    if (typeof e === 'string') return e;
-                    if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
-                    return 'Something went wrong';
-                  })()}
+            {(error || voiceError) && (() => {
+              const err = error ?? voiceError;
+              if (typeof window !== 'undefined') {
+                console.log('[Attune] error / voiceError:', err);
+                try {
+                  const errUnknown = err as unknown;
+                  const serialized =
+                    errUnknown instanceof Error
+                      ? { name: errUnknown.name, message: errUnknown.message, stack: errUnknown.stack }
+                      : typeof err === 'object' && err !== null
+                        ? Object.fromEntries(
+                            Object.entries(err as Record<string, unknown>).map(([k, v]) => {
+                              const vUnknown = v as unknown;
+                              return [k, vUnknown instanceof Error ? { message: vUnknown.message, name: vUnknown.name } : v];
+                            })
+                          )
+                        : err;
+                  console.log('[Attune] error / voiceError (serialized):', JSON.stringify(serialized, null, 2));
+                } catch (e) {
+                  console.log('[Attune] error / voiceError (string):', String(err));
+                }
+              }
+              if (isCallEndedNoise(err)) {
+                return (
+                  <div className="max-w-3xl mx-auto w-full px-4 pb-4">
+                    <div className="rounded-xl border border-border bg-muted/50 p-4 text-sm text-muted-foreground flex items-center gap-3" role="status">
+                      <PhoneOff className="h-5 w-5 shrink-0" />
+                      <span>Call ended</span>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className="max-w-3xl mx-auto w-full px-4 pb-4">
+                  <div className="rounded-xl border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
+                    {toDisplayText(err) ?? (
+                  <div className="max-w-3xl mx-auto w-full px-4 pb-4">
+                    <div className="rounded-xl border border-border bg-muted/50 p-4 text-sm text-muted-foreground flex items-center gap-3" role="status">
+                      <PhoneOff className="h-5 w-5 shrink-0" />
+                      <span>Call ended</span>
+                    </div>
+                  </div>
+                )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         </div>
 
