@@ -1,6 +1,8 @@
 import { createServerClient as createSupabaseServerClient } from "@supabase/ssr";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { createServiceRoleClient } from "./admin";
+
+export { createServiceRoleClient };
 
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
@@ -32,19 +34,4 @@ export const createClient = (cookieStore: Awaited<ReturnType<typeof cookies>>) =
 export async function createServerClient() {
   const cookieStore = await cookies();
   return createClient(cookieStore);
-}
-
-/**
- * Create a Supabase client with the service role key. Use ONLY on the server for admin operations
- * (e.g. RAG ingest) that must bypass RLS. Never expose SUPABASE_SERVICE_ROLE_KEY to the client.
- */
-export function createServiceRoleClient() {
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceRoleKey) {
-    throw new Error(
-      "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for createServiceRoleClient"
-    );
-  }
-  return createSupabaseClient(url, serviceRoleKey);
 }

@@ -3,7 +3,7 @@
  * Uses service role client for server-only admin operations.
  */
 
-import { createServiceRoleClient } from '@/utils/supabase/server';
+import { createServiceRoleClient } from '@/utils/supabase/admin';
 import { splitIntoChunks } from '@/lib/rag/chunk';
 import { getEmbeddings, EMBEDDING_DIMENSIONS } from '@/lib/rag/embeddings';
 

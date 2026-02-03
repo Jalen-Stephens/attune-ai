@@ -1,6 +1,8 @@
 import { getAgents } from '@/lib/agents';
 import { AgentsListClient } from './AgentsListClient';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AgentsPage() {
   const agents = await getAgents();
 
