@@ -25,7 +25,7 @@ export async function extractPdf(buffer: Buffer): Promise<ExtractPdfResult> {
   const pdfParse = (await import('pdf-parse')).default;
   const noop = () => {};
   const stderrWrite = process.stderr.write.bind(process.stderr);
-  process.stderr.write = noop as typeof process.stderr.write;
+  process.stderr.write = noop as unknown as typeof process.stderr.write;
   let data: { text?: string; numpages?: number };
   try {
     data = await pdfParse(buffer);
