@@ -1,243 +1,222 @@
 # Attune AI
 
-Voice- and text-based AI support platform with specialized agents for different support domains.
+Voice- and text-based AI support platform with specialized agents for different support domains. Attune AI provides structured, psychologically informed conversations—supportive and educational, not a replacement for licensed mental health professionals.
 
-## Overview
+---
 
-Attune AI provides structured, psychologically informed conversations through specialized AI agents. Each agent is designed to support a specific domain (e.g., addiction support, relationship communication, family dynamics) using evidence-informed conversational frameworks, retrieval-augmented generation (RAG), and post-session summaries.
+## How It Works
+
+### High-level flow
+
+1. **Landing** — Users visit the site; signed-in users go to the dashboard, others can sign up or log in.
+2. **Choose an agent** — Each agent is a persona (e.g. addiction support, relationship communication, family dynamics, general reflection) with its own system prompt and RAG knowledge base.
+3. **Start a session** — Sessions can be **text** (dashboard chat) or **voice** (Vapi). A session is tied to one agent and optionally to an authenticated user.
+4. **Conversation** — User messages trigger:
+   - **RAG retrieval**: the last few turns + current message are embedded and matched against `rag_doc_chunks` for that agent; retrieved chunks are injected into the LLM prompt.
+   - **Structured response**: the model returns JSON with `message`, `resources`, and `suggestedAgents`. Crisis detection can augment the prompt with safety language (e.g. 988, professional help).
+5. **Referrals (voice)** — During voice sessions, the agent can collect intake (symptoms, location, insurance) and call tools to look up providers (Zocdoc) and send an email summary (Resend).
+6. **After the session** — Transcripts are stored; summaries can be generated. Referral clicks and suggestion engagement are tracked for analytics.
+
+### Main concepts
+
+| Concept | Description |
+|--------|-------------|
+| **Agents** | Configurations (system prompt, RAG namespace, intake questions)—not separate models. All use the same pipeline with different policy and context. |
+| **Sessions** | One conversation with one agent. Can be text (dashboard) or voice (Vapi). Store transcript turns, optional summary, and runtime state (e.g. risk flags, active agent). |
+| **RAG** | Documents are chunked, embedded (OpenAI), and stored in `rag_doc_chunks`. Each turn can retrieve relevant chunks per agent and log retrievals in `rag_retrievals`. |
+| **Referrals** | Intake → provider lookup (Zocdoc) → top recommendations → optional email summary. Used from voice via Vapi tool calls. |
+
+---
 
 ## Tech Stack
 
-- **Frontend:** Next.js 14 (App Router) + TypeScript
-- **Styling:** Tailwind CSS
-- **Database:** Supabase (PostgreSQL)
-- **Voice:** Vapi (voice sessions + webhook ingestion)
-- **Vector Search:** pgvector (scaffolded, to be enabled)
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | Next.js 16 (App Router), TypeScript, Tailwind CSS |
+| **Auth** | Supabase Auth (login, signup, RLS) |
+| **Database** | Supabase (PostgreSQL), pgvector for embeddings |
+| **Voice** | Vapi (calls, webhooks, server-side tools) |
+| **LLM & embeddings** | OpenAI (chat + text-embedding-3-small) |
+| **Referrals** | Zocdoc (provider search), Resend (email) |
+| **RAG harvest** | Brave Search API, PDF/HTML extraction, existing ingest pipeline |
+
+---
 
 ## Prerequisites
 
-- Node.js 18+ and npm
-- Supabase account and project
-- Vapi account (for voice sessions)
+- **Node.js 18+** and npm
+- **Supabase** project (Auth + Postgres + pgvector)
+- **Vapi** account (voice sessions and webhooks)
+- **OpenAI** API key (chat and embeddings)
+- Optional: **Brave Search API** (for RAG harvest), **Zocdoc**, **Resend** (referrals/email)
+
+---
 
 ## Setup
 
-### 1. Install Dependencies
+### 1. Install dependencies
 
 ```bash
 npm install
 ```
 
-### 2. Environment Variables
+### 2. Environment variables
 
-Copy `.env.example` to `.env.local` and fill in your values:
+Copy `.env.example` to `.env.local` and set values (see `.env.example` for full list):
 
 ```bash
 cp .env.example .env.local
 ```
 
-Required environment variables:
+**Core (required for app + RAG):**
 
-- `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anonymous key
-- `SUPABASE_SERVICE_ROLE_KEY` - Your Supabase service role key (for server-side operations)
-- `VAPI_API_KEY` - Your Vapi API key
-- `VAPI_WEBHOOK_SECRET` - Secret for verifying Vapi webhook signatures (optional for now)
-- `NEXT_PUBLIC_APP_URL` - Your app URL (defaults to `http://localhost:3000`)
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` — Supabase project and anon key
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — Server-side Supabase (RLS bypass for ingest, etc.)
+- `VAPI_API_KEY`, `VAPI_WEBHOOK_SECRET` — Vapi API and webhook verification
+- `OPENAI_API_KEY` — Chat and embeddings
 
-### 3. Database Setup
+**Client-side voice (Vapi Web SDK):**
 
-1. Create a new Supabase project or use an existing one
-2. Run the schema migration:
+- `NEXT_PUBLIC_VAPI_PUBLIC_KEY`, `NEXT_PUBLIC_VAPI_ASSISTANT_ID`
+
+**Referrals:** `ZOCDOC_API_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`  
+**RAG ingest:** `INGEST_SECRET` (protects POST `/api/rag/ingest`)  
+**RAG harvest:** `BRAVE_API_KEY`, optional `HARVEST_*` (see [docs/rag-harvest.md](docs/rag-harvest.md))
+
+### 3. Database
+
+Run Supabase migrations in order (see `supabase/README_MIGRATIONS.md`):
 
 ```bash
-# Using Supabase CLI (recommended)
 supabase db push
-
-# Or manually run the SQL file in Supabase SQL Editor
-# Copy and paste contents of supabase/schema.sql
 ```
 
-The schema includes:
-- `agent_profiles` - Agent configurations
-- `sessions` - Voice session records
-- `transcript_turns` - Individual transcript entries
-- `session_summaries` - Post-session summaries
-- `rag_docs` - RAG knowledge documents (with placeholder for embeddings)
-- `profiles` - User profiles (see `supabase/migrations/001_profiles.sql` and `supabase/README_MIGRATIONS.md`)
+Or run each file in the Supabase SQL Editor: `001_profiles.sql` through `009_session_resources.sql`. Migrations set up profiles, pgvector, `rag_doc_chunks` / `match_rag_chunks`, `rag_retrievals`, `suggestions`, session state and user link, RLS, and session resources.
 
-### 4. Run Development Server
+### 4. Seed agent profiles (optional)
+
+If `agent_profiles` is empty, the app falls back to seed data in code. To seed the DB:
+
+```bash
+# POST to your app (replace origin if needed)
+curl -X POST http://localhost:3000/api/seed/agent-profiles
+```
+
+### 5. Run the app
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000). Sign up or log in, then use the dashboard (text chat) or go to **Agents** to start a voice session.
 
-## Project Structure
+---
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Next.js dev server |
+| `npm run build` | Production build |
+| `npm run start` | Run production server |
+| `npm run lint` | Next.js lint |
+| `npm run test` | Vitest |
+| `npm run rag:harvest` | RAG harvester: Brave Search → fetch/extract → ingest. See [docs/rag-harvest.md](docs/rag-harvest.md). Example: `npm run rag:harvest -- --agent sleep_insomnia --limit 20` |
+
+---
+
+## Project structure
 
 ```
 attune-ai/
 ├── src/
-│   ├── app/                    # Next.js App Router pages
-│   │   ├── agents/             # Agent selection pages
-│   │   ├── dashboard/          # Session dashboard
-│   │   └── api/                # API route handlers
-│   ├── lib/                    # Core library functions
-│   │   ├── supabase/           # Supabase clients
-│   │   ├── db.ts               # Database operations
-│   │   ├── vapi.ts             # Vapi integration
-│   │   ├── agents.ts           # Agent profiles
-│   │   └── types.ts            # TypeScript types
-│   └── components/             # Reusable UI components
+│   ├── app/                    # Next.js App Router
+│   │   ├── page.tsx            # Landing (public)
+│   │   ├── auth/               # Login, signup, update-password
+│   │   ├── dashboard/          # Authenticated dashboard (chat, sessions, settings, voice)
+│   │   ├── agents/             # Agent list + [agentId] (start voice session)
+│   │   ├── referrals/          # Referral summary, confirmation
+│   │   ├── api/                # API routes (see below)
+│   │   └── globals.css, layout.tsx
+│   ├── components/             # UI (Navbar, chat, session cards, voice widget, etc.)
+│   ├── hooks/                  # e.g. useVapiVoice
+│   ├── lib/                    # Core logic
+│   │   ├── db.ts               # DB helpers
+│   │   ├── agents.ts           # Agent profile types/seed
+│   │   ├── vapi.ts, vapi-tools.ts, vapi-env.ts  # Vapi client and tools
+│   │   ├── rag/                # RAG: chunking, embeddings, ingest, harvest
+│   │   ├── recommendations/    # Agent routing, crisis detection, retrieve resources
+│   │   ├── email/              # Resend + console provider
+│   │   ├── zocdoc/             # Provider search
+│   │   └── tools/              # findProviders, getRagResources handlers
+│   └── utils/supabase/         # Supabase server/client/middleware
 ├── supabase/
-│   └── schema.sql              # Database schema
-└── README.md
+│   ├── migrations/             # 001–009 (profiles, pgvector, RAG, sessions, RLS, etc.)
+│   └── README_MIGRATIONS.md
+├── scripts/
+│   └── rag_harvest.ts          # CLI for RAG harvest
+├── docs/                       # Implementation, RAG, referrals, Vapi, UI
+├── AGENTS.md                   # Agent architecture and design
+└── PRD.md                      # Product requirements
 ```
 
-## Features
+---
 
-### Agent Selection
-- Browse available AI agents
-- View agent details and system prompts
-- Start voice sessions with selected agents
+## API overview
 
-### Voice Sessions
-- Create sessions via `/api/sessions/start`
-- Receive Vapi webhook events at `/api/vapi/webhook`
-- Store transcripts in real-time
-- Track session status (active/ended)
+**Sessions**
 
-### Session Dashboard
-- View all past sessions
-- View session transcripts
-- Generate and view session summaries
+- `POST /api/sessions/start` — Create session (and optionally start Vapi call); body e.g. `{ "agentId": "addiction_support" }`.
+- `GET /api/sessions/by-vapi-call/[callId]` — Resolve Vapi call ID to session.
+- `POST /api/sessions/link-voice-call` — Link existing session to Vapi call.
+- `POST /api/sessions/[sessionId]/chat` — Text chat (RAG + structured response).
+- `GET /api/sessions/[sessionId]/timeline` — Transcript timeline.
+- `POST /api/sessions/[sessionId]/summarize` — Generate session summary.
+- `POST /api/sessions/[sessionId]/tool-results` — Submit tool results (e.g. from Vapi).
 
-### RAG (Retrieval-Augmented Generation)
-- Ingest documents via `/api/rag/ingest`
-- Query documents via `/api/rag/query`
-- Scaffolded for pgvector integration
+**Vapi**
 
-## API Endpoints
+- `POST /api/vapi/webhook` — Vapi webhook (transcript, call-ended, function calls).
+- `GET /api/vapi/call-context` — Call context for Vapi (e.g. agent prompt, tools).
 
-### POST `/api/sessions/start`
-Start a new voice session with an agent.
+**RAG**
 
-**Request:**
-```json
-{
-  "agentId": "addiction_support"
-}
-```
+- `POST /api/rag/ingest` — Ingest document (auth: `INGEST_SECRET`); body includes `agentId`, `title`, `content`, optional `metadata`.
+- `POST /api/rag/query` — Query RAG (embed + `match_rag_chunks`).
 
-**Response:**
-```json
-{
-  "sessionId": "uuid",
-  "vapi": {
-    "callId": "stub-uuid",
-    "webhookUrl": "http://localhost:3000/api/vapi/webhook",
-    "agentPrompt": "..."
-  }
-}
-```
+**Referrals / intake**
 
-### POST `/api/vapi/webhook`
-Receive Vapi webhook events (transcripts, call status, etc.).
+- `POST /api/intake` — Create/update intake.
+- `POST /api/referrals/lookup` — Provider lookup (Zocdoc) and store referrals.
+- `POST /api/referrals/email` — Send referral email summary.
+- `GET /api/referrals/[referralId]/click` — Track referral link click.
 
-**Note:** Webhook signature verification is stubbed (TODO).
+**Tools (used by Vapi server-side)**
 
-### POST `/api/sessions/[sessionId]/summarize`
-Generate a summary for a completed session.
+- `POST /api/tools/findProviders` — Provider search for the agent.
+- `POST /api/tools/getRagResources` — RAG-backed resources for the agent.
 
-**Response:**
-```json
-{
-  "success": true
-}
-```
+**Other**
 
-### POST `/api/rag/ingest`
-Store a document in the RAG knowledge base.
+- `GET /api/recommendations` — Agent/resource recommendations.
+- `POST /api/seed/agent-profiles` — Seed `agent_profiles` table.
 
-**Request:**
-```json
-{
-  "agentId": "addiction_support",
-  "title": "Coping Strategies",
-  "content": "Document content...",
-  "metadata": { "source": "manual" }
-}
-```
+---
 
-### POST `/api/rag/query`
-Query the RAG knowledge base (placeholder implementation).
+## Documentation
 
-**Request:**
-```json
-{
-  "agentId": "addiction_support",
-  "query": "How to manage cravings?",
-  "topK": 5
-}
-```
+| Doc | Description |
+|-----|-------------|
+| [AGENTS.md](AGENTS.md) | Agent architecture, profile structure, shared capabilities |
+| [PRD.md](PRD.md) | Product goals, features, data models |
+| [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) | RAG pipeline, chat API contract, crisis detection, debugging |
+| [docs/SCREENING_REFERRAL_WORKFLOW.md](docs/SCREENING_REFERRAL_WORKFLOW.md) | Intake → Zocdoc → email referral flow |
+| [docs/rag-harvest.md](docs/rag-harvest.md) | RAG harvest CLI (Brave, fetch, extract, ingest) |
+| [docs/VAPI_*.md](docs/) | Vapi webhook, tools, Web SDK, prompts |
+| [supabase/README_MIGRATIONS.md](supabase/README_MIGRATIONS.md) | Migration order and options |
 
-## Webhook Testing
-
-Test the Vapi webhook endpoint with a sample payload:
-
-```bash
-curl -X POST http://localhost:3000/api/vapi/webhook \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "transcript",
-    "call": {
-      "id": "test-session-id"
-    },
-    "transcript": {
-      "role": "user",
-      "text": "Hello, I need help with cravings.",
-      "timestamp": "2024-01-28T12:00:00Z"
-    }
-  }'
-```
-
-Test call-ended event:
-
-```bash
-curl -X POST http://localhost:3000/api/vapi/webhook \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "call-ended",
-    "call": {
-      "id": "test-session-id"
-    }
-  }'
-```
-
-**Note:** Replace `test-session-id` with an actual session ID from your database, or create a session first via `/api/sessions/start`.
-
-## Development Notes
-
-### Current Limitations (TODOs)
-
-- **Vapi Integration:** The Vapi SDK integration is stubbed. Real call creation needs to be implemented.
-- **Webhook Signature Verification:** Vapi webhook signature verification is not yet implemented.
-- **RAG Vector Search:** pgvector extension and embedding generation are not yet enabled. Current RAG queries return placeholder results.
-- **LLM Summarization:** Session summaries are stubbed. Integration with OpenAI API (or other LLM) is needed.
-- **Session-Vapi Mapping:** The webhook handler needs a proper mapping between Vapi call IDs and internal session IDs.
-
-### Next Steps
-
-1. Integrate actual Vapi SDK for call creation
-2. Implement webhook signature verification
-3. Enable pgvector extension in Supabase
-4. Implement embedding generation for RAG documents
-5. Integrate LLM API for session summarization
-6. Add authentication (Supabase Auth) if needed
-7. Add error boundaries and loading states
-8. Add comprehensive error handling and validation
+---
 
 ## License
 
-Private project - All rights reserved.
+Private project — all rights reserved.
