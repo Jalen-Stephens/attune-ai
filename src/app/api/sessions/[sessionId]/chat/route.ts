@@ -116,7 +116,15 @@ export async function POST(
       }
     );
 
-    const retrievedChunks = (rpcError ? [] : (chunksData ?? [])).map(
+    type RetrievedChunk = {
+      content: string;
+      score: number;
+      metadata: Record<string, unknown> | undefined;
+      chunk_id: string;
+      rag_doc_id: string;
+    };
+
+    const retrievedChunks: RetrievedChunk[] = (rpcError ? [] : (chunksData ?? [])).map(
       (row: {
         id: string;
         rag_doc_id: string;

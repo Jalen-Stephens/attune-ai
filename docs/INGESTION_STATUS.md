@@ -4,30 +4,16 @@ Summary of what was implemented and how to run ingestion locally.
 
 ---
 
-## Files Created or Modified
+## Files
 
-### New files
-
-- **`rag_sources/`** — 20 markdown resources (5 per folder):
-  - `rag_sources/sleep/` — 5 files (`sleep_insomnia`)
-  - `rag_sources/relationships/` — 5 files (`relationship_communication`)
-  - `rag_sources/cravings/` — 5 files (`addiction_support`)
-  - `rag_sources/focus/` — 5 files (`adhd_executive`)
-- **`src/lib/rag/frontmatter.ts`** — Parse YAML frontmatter from markdown (title, type, tags, url, agent_id).
+- **`src/lib/rag/frontmatter.ts`** — Parse YAML frontmatter from markdown (used by harvest normalize output).
 - **`src/lib/rag/chunk.ts`** — Chunker: 200–800 token chunks, target 450, overlap 80; merges small trailing chunks.
 - **`src/lib/rag/ingest.ts`** — Shared ingest pipeline: insert `rag_docs`, chunk, embed (OpenAI), insert `rag_doc_chunks`; uses service role client.
-- **`src/lib/rag/ingest-folder.ts`** — Discovers `rag_sources/**/*.md`, parses frontmatter, calls ingest pipeline per file.
-- **`src/app/api/rag/ingest-folder/route.ts`** — `POST /api/rag/ingest-folder` (protected by `INGEST_SECRET`).
-- **`docs/RAG_DATASET.md`** — How to add resources, frontmatter, run ingestion, verify chunks, common errors.
-- **`docs/INGESTION_STATUS.md`** — This file.
+- **`src/app/api/rag/ingest/route.ts`** — `POST /api/rag/ingest` (protected by `INGEST_SECRET`).
+- **`docs/RAG_DATASET.md`** — How to run ingestion, verify chunks, common errors.
+- **`docs/rag-harvest.md`** — Harvest: Brave Search + fetch/extract, ingest into RAG.
 
-### Modified files
-
-- **`src/app/api/rag/ingest/route.ts`** — Uses shared `ingestDocument`, returns `{ ragDocId, chunksInserted }`, protected by `INGEST_SECRET`.
-- **`src/lib/rag/embeddings.ts`** — Validates embedding dimensions (1536); throws clear error on mismatch.
-- **`src/lib/rag/index.ts`** — Exports `splitIntoChunks` from `chunk.ts` instead of `chunking.ts`.
-- **`src/utils/supabase/server.ts`** — Added `createServiceRoleClient()` using `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
-- **`.env.example`** — Added `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `INGEST_SECRET`; existing OpenAI and Supabase vars documented for RAG.
+RAG content is added via **harvest** (`pnpm rag:harvest`) or **single-document ingest** (`POST /api/rag/ingest`).
 
 ---
 
@@ -40,7 +26,6 @@ Summary of what was implemented and how to run ingestion locally.
      -H "x-ingest-secret: YOUR_INGEST_SECRET" \
      -d '{}'
    ```
-   Then run the ingest-folder command below.
 
 2. **Set environment variables** (copy from `.env.example` and fill in values):
    - `OPENAI_API_KEY`
@@ -55,22 +40,11 @@ Summary of what was implemented and how to run ingestion locally.
    npm run dev
    ```
 
-4. **Ingest all markdown files** under `rag_sources/`:
+4. **Ingest via harvest** (see `docs/rag-harvest.md`):
    ```bash
-   curl -X POST http://localhost:3000/api/rag/ingest-folder \
-     -H "Content-Type: application/json" \
-     -H "x-ingest-secret: YOUR_INGEST_SECRET" \
-     -d '{}'
+   pnpm rag:harvest --agent sleep_insomnia --limit 20
    ```
-   Or with override agent (optional):
-   ```bash
-   curl -X POST http://localhost:3000/api/rag/ingest-folder \
-     -H "Content-Type: application/json" \
-     -H "x-ingest-secret: YOUR_INGEST_SECRET" \
-     -d '{"overrideAgentId":"sleep_insomnia"}'
-   ```
-
-4. **Ingest a single document** (example):
+   Or **ingest a single document**:
    ```bash
    curl -X POST http://localhost:3000/api/rag/ingest \
      -H "Content-Type: application/json" \
@@ -89,14 +63,6 @@ Replace `YOUR_INGEST_SECRET` with the value of `INGEST_SECRET` in your `.env`.
 
 ## Exact cURL Commands (copy-paste)
 
-**Ingest folder (all 20 files):**
-```bash
-curl -X POST http://localhost:3000/api/rag/ingest-folder \
-  -H "Content-Type: application/json" \
-  -H "x-ingest-secret: YOUR_INGEST_SECRET" \
-  -d '{}'
-```
-
 **Single doc:**
 ```bash
 curl -X POST http://localhost:3000/api/rag/ingest \
@@ -106,3 +72,17 @@ curl -X POST http://localhost:3000/api/rag/ingest \
 ```
 
 Use `Authorization: Bearer YOUR_INGEST_SECRET` in place of `x-ingest-secret` if you prefer.
+
+---
+
+## Removing folder-sourced docs from the database
+
+If you previously ingested from the old `rag_sources/` folder and want to remove only those documents (keeping harvest-sourced docs), run in **Supabase Dashboard → SQL Editor**:
+
+```sql
+-- Delete only docs that came from rag_sources/ (folder ingest). Harvest-sourced docs have source_url/content_hash in metadata.
+DELETE FROM rag_docs
+WHERE (metadata->>'source_url' IS NULL AND metadata->>'content_hash' IS NULL);
+```
+
+This removes only folder-sourced documents and their chunks (via cascade). All other data is unchanged.
