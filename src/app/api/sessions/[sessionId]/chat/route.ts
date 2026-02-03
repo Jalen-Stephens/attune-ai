@@ -13,6 +13,7 @@ import {
   RETRIEVAL_TOP_K,
 } from '@/lib/rag/chat';
 import { checkCrisis } from '@/lib/recommendations/crisisDetection';
+import { routeAgents } from '@/lib/recommendations/agentRouter';
 import type {
   ChatApiResponse,
   ResourceCard,
@@ -26,6 +27,9 @@ const ChatBodySchema = z.object({
 
 const BASE_DISCLAIMER =
   'You are a supportive AI. Do not diagnose or provide medical/clinical advice. Encourage professional help when appropriate. Respond only with valid JSON.';
+
+/** Min confidence (0–1) to use the router's top agent for retrieval instead of session agent */
+const ROUTE_RETRIEVAL_MIN_CONFIDENCE = 0.15;
 
 export async function POST(
   request: NextRequest,
@@ -87,11 +91,26 @@ export async function POST(
     const retrievalQuery = buildRetrievalQueryFromContext(context);
     const queryEmbedding = await getEmbedding(retrievalQuery);
 
+    // Topic-based routing: first message always uses best-fit agent; later messages use router when confidence is high
+    const isFirstMessage = transcript.length === 0;
+    const routerSuggestions = await routeAgents(userMessage, 3);
+    const topRouted = routerSuggestions[0];
+    const useRoutedAgent = isFirstMessage
+      ? !!topRouted
+      : !!(
+          topRouted &&
+          topRouted.confidence >= ROUTE_RETRIEVAL_MIN_CONFIDENCE &&
+          topRouted.agent_id !== agent.id
+        );
+    const retrievalAgentId = useRoutedAgent && topRouted ? topRouted.agent_id : agent.id;
+    const effectiveAgent =
+      retrievalAgentId === agent.id ? agent : (await getAgentById(retrievalAgentId)) ?? agent;
+
     const { data: chunksData, error: rpcError } = await supabase.rpc(
       'match_rag_chunks',
       {
         query_embedding: queryEmbedding,
-        filter_agent_id: agent.id,
+        filter_agent_id: effectiveAgent.id,
         match_count: RETRIEVAL_TOP_K,
         match_threshold: 0,
       }
@@ -113,9 +132,23 @@ export async function POST(
       })
     );
 
+    // Log RAG retrieval for DB mapping: effective (routed) agent + doc/chunk IDs
+    const ragDocIds = [...new Set(retrievedChunks.map((c) => c.rag_doc_id))];
+    const chunkIds = retrievedChunks.map((c) => ({ chunk_id: c.chunk_id, rag_doc_id: c.rag_doc_id, score: c.score }));
+    console.log('[RAG Chat] retrieval', {
+      session_id: sessionId,
+      session_agent_id: agent.id,
+      effective_agent_id: effectiveAgent.id,
+      effective_agent_name: effectiveAgent.name,
+      first_message: isFirstMessage,
+      routed: useRoutedAgent,
+      rag_doc_ids: ragDocIds,
+      chunk_ids: chunkIds,
+    });
+
     const allAgents = await getAgents();
     const availableAgentsForPrompt = allAgents
-      .filter((a) => a.id !== agent.id)
+      .filter((a) => a.id !== effectiveAgent.id)
       .map((a) => ({
         id: a.id,
         name: a.name,
@@ -125,7 +158,7 @@ export async function POST(
       }));
 
     const promptInput = {
-      systemPrompt: agent.system_prompt,
+      systemPrompt: effectiveAgent.system_prompt,
       context: {
         ...context,
         lastTurns: context.lastTurns,
@@ -145,7 +178,7 @@ export async function POST(
       crisisDetected: crisis.isCrisis,
       crisisMessage: crisis.isCrisis ? crisis.message : undefined,
       availableAgents: availableAgentsForPrompt,
-      currentAgentId: agent.id,
+      currentAgentId: effectiveAgent.id,
     };
 
     const systemPrompt = buildSystemPrompt(promptInput);
@@ -193,16 +226,27 @@ export async function POST(
       ),
     });
 
-    const resources: ResourceCard[] = (structured.resources ?? []).map(
-      (r) => ({
+    const MAX_RESOURCES = 2;
+    const resources: ResourceCard[] = (structured.resources ?? [])
+      .slice(0, MAX_RESOURCES)
+      .map((r) => ({
         id: r.id ?? `res-${Math.random().toString(36).slice(2, 9)}`,
         title: r.title ?? '',
         snippet: r.snippet ?? '',
         url: r.url ?? undefined,
         type: r.type ?? 'guide',
         reason: r.reason ?? 'Suggested from conversation.',
-      })
-    );
+      }));
+
+    // Log response summary for DB mapping: turn + effective agent + RAG docs + resource titles
+    console.log('[RAG Chat] response', {
+      session_id: sessionId,
+      assistant_turn_id: assistantTurnId,
+      effective_agent_id: effectiveAgent.id,
+      rag_doc_ids: ragDocIds,
+      resource_titles: resources.map((r) => r.title),
+      suggested_agent_ids: (structured.suggested_agents ?? []).map((a) => a.agent_id),
+    });
 
     const suggestedAgents: AgentCard[] = (
       structured.suggested_agents ?? []
@@ -266,14 +310,16 @@ export async function POST(
       ...session.state,
       current_topic: userMessage.slice(0, 200),
       risk_flags: riskFlags.length > 0 ? riskFlags : undefined,
-      active_agent: agent.id,
+      active_agent: effectiveAgent.id,
       last_router_confidence: topAgentConfidence,
     };
 
-    await supabase
-      .from('sessions')
-      .update({ state: newState })
-      .eq('id', sessionId);
+    // On first message, adopt the effective (routed) agent so the session continues with that agent
+    const sessionUpdate: { state: SessionState; agent_id?: string } = { state: newState };
+    if (isFirstMessage && effectiveAgent.id !== agent.id) {
+      sessionUpdate.agent_id = effectiveAgent.id;
+    }
+    await supabase.from('sessions').update(sessionUpdate).eq('id', sessionId);
 
     const response: ChatApiResponse = {
       turnId: assistantTurnId,

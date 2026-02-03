@@ -46,7 +46,7 @@ export interface ChatPromptInput {
 const STRUCTURED_RESPONSE_SCHEMA = `You must respond with valid JSON only, no markdown or extra text. Schema:
 {
   "message": "string (brief, conversational reply: 1-4 sentences; directly address what the user said; do not lecture or dump long text)",
-  "resources": [{"id": "string", "title": "string", "snippet": "string", "url": "string | null", "type": "string", "reason": "string"}],
+  "resources": [0-2 items: {"id": "string", "title": "string", "snippet": "string", "url": "string | null", "type": "string", "reason": "string"}],
   "suggested_agents": [{"agent_id": "string (must match an available voice agent id)", "name": "string", "reason": "string (1 sentence: why this agent fits what the user shared)", "confidence": number 0-1}]
 }`;
 
@@ -76,7 +76,7 @@ export function buildSystemPrompt(input: ChatPromptInput): string {
 
   if (availableAgents && availableAgents.length > 0) {
     system +=
-      '\n\n**Suggest both an agent and a resource when relevant**: In each reply, when the user\'s situation fits, include (1) at least one voice agent in suggested_agents — someone they can talk to — and (2) at least one resource in resources — something to read or try (from retrieved context or a short tip). Match the agent to their situation (e.g. anxiety → Anxiety agent). Use suggested_agents early and often; only use agent_id from the list in the user message; give a short, tailored reason for each. Do not suggest the current agent (current agent id: ' +
+      '\n\n**Suggest both an agent and a resource when relevant**: In each reply, when the user\'s situation fits, include (1) at least one voice agent in suggested_agents — someone they can talk to — and (2) one or two resources in resources (at most 2) — something to read or try (from retrieved context or a short tip). Match the agent to their situation (e.g. anxiety → Anxiety agent). Use suggested_agents early and often; only use agent_id from the list in the user message; give a short, tailored reason for each. Do not suggest the current agent (current agent id: ' +
       (currentAgentId || 'none') +
       ').';
   }
