@@ -446,6 +446,37 @@ export async function createOrUpdateSessionServiceRole(
 }
 
 /**
+ * Update an existing session with Vapi call ID (service role).
+ * Used by the webhook when the client passed sessionId at call start so we attach the call to that session.
+ */
+export async function updateSessionVapiCallId(
+  sessionId: string,
+  vapiCallId: string
+): Promise<void> {
+  const supabase = createServiceRoleClient();
+  const { error } = await supabase
+    .from('sessions')
+    .update({ vapi_call_id: vapiCallId })
+    .eq('id', sessionId);
+  if (error) throw new Error(`Failed to update session vapi_call_id: ${error.message}`);
+}
+
+/**
+ * Get session by ID (service role). Use from webhook when no user context.
+ * Returns null if not found.
+ */
+export async function getSessionByIdServiceRole(sessionId: string): Promise<Session | null> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .single();
+  if (error || !data) return null;
+  return data as Session;
+}
+
+/**
  * Create or update intake
  */
 export async function createOrUpdateIntake(

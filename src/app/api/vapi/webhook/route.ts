@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
-import { insertTranscriptTurn, endSessionServiceRole, createOrUpdateSessionServiceRole, logEvent, replaceTranscriptTurns, getSessionByVapiCallId, saveSummaryServiceRole } from '@/lib/db';
+import { insertTranscriptTurn, endSessionServiceRole, createOrUpdateSessionServiceRole, logEvent, replaceTranscriptTurns, getSessionByVapiCallId, saveSummaryServiceRole, getSessionByIdServiceRole, updateSessionVapiCallId } from '@/lib/db';
 import { verifyVapiSignature } from '@/lib/webhook-verification';
 import { 
   createOrUpdateIntakeTool, 
@@ -90,16 +90,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
-    // Get or create session ID from Vapi call ID mapping (service role—webhook has no user context)
+    // SessionId may be sent when the client called sessions/start and passed variableValues.sessionId at call start.
+    // Vapi echoes variableValues in the payload (exact path may vary; check vapi-webhook-last.json in dev).
+    const variableValues = (payload as any).variableValues ?? (payload as any).message?.variableValues ?? (payload as any).call?.variableValues;
+    const payloadSessionId = typeof variableValues?.sessionId === 'string' ? variableValues.sessionId.trim() : null;
+
     let sessionId: string;
     try {
-      sessionId = await createOrUpdateSessionServiceRole(
-        (payload as any).agentId || 'general_reflection', // Default agent
-        vapiCallId,
-        (payload as any).userEmail || (payload as any).user_email,
-        (payload as any).userPhone || (payload as any).user_phone,
-        'voice'
-      );
+      if (payloadSessionId) {
+        const existing = await getSessionByIdServiceRole(payloadSessionId);
+        if (existing && existing.status === 'active') {
+          await updateSessionVapiCallId(payloadSessionId, vapiCallId);
+          sessionId = payloadSessionId;
+        } else {
+          sessionId = await createOrUpdateSessionServiceRole(
+            (payload as any).agentId || 'general_reflection',
+            vapiCallId,
+            (payload as any).userEmail || (payload as any).user_email,
+            (payload as any).userPhone || (payload as any).user_phone,
+            'voice'
+          );
+        }
+      } else {
+        sessionId = await createOrUpdateSessionServiceRole(
+          (payload as any).agentId || 'general_reflection',
+          vapiCallId,
+          (payload as any).userEmail || (payload as any).user_email,
+          (payload as any).userPhone || (payload as any).user_phone,
+          'voice'
+        );
+      }
     } catch (error) {
       console.error('Error creating/updating session:', error);
       return NextResponse.json({ received: true, error: 'Session creation failed' }, { status: 200 });

@@ -27,7 +27,7 @@ export interface VapiVoiceWidgetProps {
   assistantIdOverride?: string;
 }
 
-export function VapiVoiceWidget({ agentName, assistantIdOverride }: VapiVoiceWidgetProps = {}) {
+export function VapiVoiceWidget({ agentId, agentName, assistantIdOverride }: VapiVoiceWidgetProps = {}) {
   const [isConnected, setConnected] = useState(false);
   const [isStarting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +35,7 @@ export function VapiVoiceWidget({ agentName, assistantIdOverride }: VapiVoiceWid
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [lastToolCall, setLastToolCall] = useState<string | null>(null);
   const vapiRef = useRef<Vapi | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
   const handlersRef = useRef<{
     callStart: () => void;
     callEnd: () => void;
@@ -132,15 +133,34 @@ export function VapiVoiceWidget({ agentName, assistantIdOverride }: VapiVoiceWid
     if (!runValidation() || !vapiRef.current || !assistantId) return;
     setError(null);
     setStarting(true);
+    sessionIdRef.current = null;
     try {
-      await vapiRef.current.start(assistantId);
+      let assistantOverrides: { variableValues?: Record<string, string> } | undefined;
+      if (agentId) {
+        const startRes = await fetch('/api/sessions/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId }),
+        });
+        if (startRes.ok) {
+          const data = await startRes.json();
+          const sid = data.sessionId;
+          if (typeof sid === 'string' && sid) {
+            sessionIdRef.current = sid;
+            assistantOverrides = {
+              variableValues: { sessionId: sid, agentId },
+            };
+          }
+        }
+      }
+      await vapiRef.current.start(assistantId, assistantOverrides as Parameters<Vapi['start']>[1]);
     } catch (e) {
       const errMsg =
         e instanceof Error ? e.message : typeof e === 'string' ? e : 'Failed to start call';
       setError(errMsg);
       setStarting(false);
     }
-  }, [assistantId, runValidation]);
+  }, [agentId, assistantId, runValidation]);
 
   const endCall = useCallback(() => {
     vapiRef.current?.stop();

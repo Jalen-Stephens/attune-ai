@@ -287,6 +287,11 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
       setTurns((prev) => [...prev, connectingTurn]);
       try {
         const sid = await ensureSession();
+        await fetch(`/api/sessions/${sid}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId }),
+        });
         await startVoice(sid);
       } catch (e) {
         setTurns((prev) =>
