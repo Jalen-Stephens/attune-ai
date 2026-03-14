@@ -112,13 +112,18 @@ export async function POST(request: NextRequest) {
           );
         }
       } else {
-        sessionId = await createOrUpdateSessionServiceRole(
-          (payload as any).agentId || 'general_reflection',
-          vapiCallId,
-          (payload as any).userEmail || (payload as any).user_email,
-          (payload as any).userPhone || (payload as any).user_phone,
-          'voice'
-        );
+        const existingByCallId = await getSessionByVapiCallId(vapiCallId);
+        if (existingByCallId?.session?.id) {
+          sessionId = existingByCallId.session.id;
+        } else {
+          sessionId = await createOrUpdateSessionServiceRole(
+            (payload as any).agentId || 'general_reflection',
+            vapiCallId,
+            (payload as any).userEmail || (payload as any).user_email,
+            (payload as any).userPhone || (payload as any).user_phone,
+            'voice'
+          );
+        }
       }
     } catch (error) {
       console.error('Error creating/updating session:', error);

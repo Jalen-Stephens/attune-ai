@@ -7,9 +7,39 @@
  * - Send referral emails
  */
 
-import { createOrUpdateIntakeServiceRole, getIntakeServiceRole, logEvent } from './db';
+import { createOrUpdateIntakeServiceRole, getIntakeServiceRole, logEvent, insertSessionResource } from './db';
 import { runReferralLookup } from './referrals/lookup';
+import { logToolCall } from './tools/_logger';
 import type { Intake } from './types';
+
+/** Map referral from runReferralLookup to the shape expected by ProviderCards / timeline / session_resources */
+function referralsToProviderCardItems(
+  referrals: Array<{
+    id: string;
+    provider_name: string;
+    specialty: string;
+    location: { address: string | null; city: string | null; state: string | null; zip: string | null; distance_miles: number | null };
+    booking_url: string;
+    match_reasons: string[] | null;
+  }>
+): Array<{ name?: string; bookingUrl?: string | null; summary?: string; specialties?: string[]; location?: { city?: string; state?: string; zip?: string }; distanceMiles?: number; providerId?: string }> {
+  return referrals.map((ref) => {
+    const locationParts = [ref.location?.address, ref.location?.city, ref.location?.state, ref.location?.zip].filter(Boolean);
+    const summaryParts = [...locationParts];
+    if (ref.match_reasons?.length) summaryParts.push(ref.match_reasons.join(', '));
+    return {
+      providerId: ref.id,
+      name: ref.provider_name,
+      bookingUrl: ref.booking_url,
+      summary: summaryParts.join(' · ') || undefined,
+      specialties: ref.specialty ? [ref.specialty] : [],
+      location: ref.location
+        ? { city: ref.location.city ?? undefined, state: ref.location.state ?? undefined, zip: ref.location.zip ?? undefined }
+        : undefined,
+      distanceMiles: ref.location?.distance_miles ?? undefined,
+    };
+  });
+}
 
 /**
  * Tool: Create or update intake
@@ -104,6 +134,24 @@ export async function lookupSpecialistsTool(
     await logEvent(sessionId, 'referrals_looked_up', {
       count: data.referrals.length,
     });
+
+    const disclaimer = 'Results from Google Places. Contact providers for availability and insurance.';
+    const providersForDisplay = referralsToProviderCardItems(data.referrals);
+    try {
+      await insertSessionResource(sessionId, 'provider', {
+        providers: providersForDisplay,
+        disclaimer,
+      });
+      await logToolCall({
+        toolName: 'findProviders',
+        sessionId,
+        success: true,
+        durationMs: 0,
+        payload: { providers: providersForDisplay, disclaimer },
+      });
+    } catch (err) {
+      console.error('Failed to write session_resources/tool event for voice referrals:', err);
+    }
 
     return {
       success: true,
