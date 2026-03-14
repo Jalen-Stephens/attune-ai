@@ -527,6 +527,50 @@ export async function getIntake(sessionId: string): Promise<Intake | null> {
 }
 
 /**
+ * Get intake by session ID (service role). Use from webhook/agent-tools where there is no user session so RLS would block.
+ */
+export function getIntakeServiceRole(sessionId: string): Promise<Intake | null> {
+  const supabase = createServiceRoleClient();
+  return supabase
+    .from('intakes')
+    .select('*')
+    .eq('session_id', sessionId)
+    .maybeSingle()
+    .then(({ data, error }) => {
+      if (error) throw new Error(`Failed to get intake: ${error.message}`);
+      return data;
+    });
+}
+
+/**
+ * Create or update intake (service role). Use from webhook/agent-tools where there is no user session so RLS would block.
+ */
+export async function createOrUpdateIntakeServiceRole(
+  sessionId: string,
+  intakeData: Partial<Intake> & { user_email: string }
+): Promise<Intake> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from('intakes')
+    .upsert(
+      {
+        session_id: sessionId,
+        ...intakeData,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'session_id' }
+    )
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to create/update intake: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
  * Save referrals for a session
  */
 export async function saveReferrals(
@@ -554,6 +598,25 @@ export async function saveReferrals(
     throw new Error(`Failed to save referrals: ${error.message}`);
   }
   
+  return data;
+}
+
+/**
+ * Save referrals for a session (service role). Use from webhook path where there is no user session; RLS blocks DELETE on referrals otherwise.
+ */
+export async function saveReferralsServiceRole(
+  sessionId: string,
+  referrals: Omit<Referral, 'id' | 'created_at'>[]
+): Promise<Referral[]> {
+  const supabase = createServiceRoleClient();
+  await supabase.from('referrals').delete().eq('session_id', sessionId);
+  const { data, error } = await supabase
+    .from('referrals')
+    .insert(referrals.map((ref) => ({ ...ref, session_id: sessionId })))
+    .select();
+  if (error) {
+    throw new Error(`Failed to save referrals: ${error.message}`);
+  }
   return data;
 }
 

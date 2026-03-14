@@ -7,7 +7,7 @@
  * - Send referral emails
  */
 
-import { createOrUpdateIntake, getIntake, logEvent } from './db';
+import { createOrUpdateIntakeServiceRole, getIntakeServiceRole, logEvent } from './db';
 import { runReferralLookup } from './referrals/lookup';
 import type { Intake } from './types';
 
@@ -35,7 +35,7 @@ export async function createOrUpdateIntakeTool(
   }
 ): Promise<{ success: boolean; message: string; intake?: Intake }> {
   try {
-    const intake = await createOrUpdateIntake(sessionId, params);
+    const intake = await createOrUpdateIntakeServiceRole(sessionId, params);
     
     await logEvent(sessionId, 'intake_updated', {
       has_reason: !!params.reason_for_visit,
@@ -75,7 +75,7 @@ export async function lookupSpecialistsTool(
   }>;
 }> {
   try {
-    const intake = await getIntake(sessionId);
+    const intake = await getIntakeServiceRole(sessionId);
     
     if (!intake) {
       return {
@@ -144,7 +144,7 @@ export async function sendReferralEmailTool(
   sessionId: string
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const intake = await getIntake(sessionId);
+    const intake = await getIntakeServiceRole(sessionId);
     
     if (!intake) {
       return {

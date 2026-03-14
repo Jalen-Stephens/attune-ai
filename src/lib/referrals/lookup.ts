@@ -4,7 +4,7 @@
  * voice agent does not depend on the server calling its own HTTP endpoint.
  */
 
-import { getIntake, saveReferrals, logEvent } from '@/lib/db';
+import { getIntakeServiceRole, saveReferralsServiceRole, logEvent } from '@/lib/db';
 import { searchTherapists } from '@/lib/google-places/searchTherapists';
 import type { Referral } from '@/lib/types';
 
@@ -39,7 +39,7 @@ export interface ReferralLookupResult {
  * Call this from the API route or from the voice agent tool—no HTTP self-call.
  */
 export async function runReferralLookup(sessionId: string): Promise<ReferralLookupResult> {
-  const intake = await getIntake(sessionId);
+  const intake = await getIntakeServiceRole(sessionId);
 
   if (!intake) {
     return {
@@ -111,7 +111,7 @@ export async function runReferralLookup(sessionId: string): Promise<ReferralLook
       };
     });
 
-    await saveReferrals(sessionId, referralRows);
+    await saveReferralsServiceRole(sessionId, referralRows);
 
     await logEvent(sessionId, 'referrals_returned', {
       count: referralRows.length,
