@@ -529,17 +529,15 @@ export async function getIntake(sessionId: string): Promise<Intake | null> {
 /**
  * Get intake by session ID (service role). Use from webhook/agent-tools where there is no user session so RLS would block.
  */
-export function getIntakeServiceRole(sessionId: string): Promise<Intake | null> {
+export async function getIntakeServiceRole(sessionId: string): Promise<Intake | null> {
   const supabase = createServiceRoleClient();
-  return supabase
+  const { data, error } = await supabase
     .from('intakes')
     .select('*')
     .eq('session_id', sessionId)
-    .maybeSingle()
-    .then(({ data, error }) => {
-      if (error) throw new Error(`Failed to get intake: ${error.message}`);
-      return data;
-    });
+    .maybeSingle();
+  if (error) throw new Error(`Failed to get intake: ${error.message}`);
+  return data;
 }
 
 /**
