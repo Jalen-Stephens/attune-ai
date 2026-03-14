@@ -448,12 +448,18 @@ export async function createOrUpdateSessionServiceRole(
 /**
  * Update an existing session with Vapi call ID (service role).
  * Used by the webhook when the client passed sessionId at call start so we attach the call to that session.
+ * Clears vapi_call_id from any other session that had it so only one session is linked per call.
  */
 export async function updateSessionVapiCallId(
   sessionId: string,
   vapiCallId: string
 ): Promise<void> {
   const supabase = createServiceRoleClient();
+  await supabase
+    .from('sessions')
+    .update({ vapi_call_id: null })
+    .eq('vapi_call_id', vapiCallId)
+    .neq('id', sessionId);
   const { error } = await supabase
     .from('sessions')
     .update({ vapi_call_id: vapiCallId })

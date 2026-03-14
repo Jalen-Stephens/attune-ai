@@ -108,6 +108,9 @@ export async function lookupSpecialistsTool(
     const intake = await getIntakeServiceRole(sessionId);
     
     if (!intake) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[lookupSpecialists] No intake for session', sessionId, '— ensure createOrUpdateIntake was called first and sessionId is consistent for the call.');
+      }
       return {
         success: false,
         message: 'Please complete intake information first. I need to know your reason for visit, location, and insurance.',
@@ -125,15 +128,22 @@ export async function lookupSpecialistsTool(
     const data = await runReferralLookup(sessionId);
 
     if (!data.success || !data.referrals || data.referrals.length === 0) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[lookupSpecialists] No results:', data.message, 'sessionId=', sessionId);
+      }
       return {
         success: false,
         message: data.message || 'I encountered an issue finding specialists. I will email you options shortly.',
       };
     }
 
-    await logEvent(sessionId, 'referrals_looked_up', {
-      count: data.referrals.length,
-    });
+    try {
+      await logEvent(sessionId, 'referrals_looked_up', { count: data.referrals.length });
+    } catch (e) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[lookupSpecialists] logEvent failed (non-fatal):', e);
+      }
+    }
 
     const disclaimer = 'Results from Google Places. Contact providers for availability and insurance.';
     const providersForDisplay = referralsToProviderCardItems(data.referrals);

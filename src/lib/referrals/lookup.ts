@@ -57,6 +57,15 @@ export async function runReferralLookup(sessionId: string): Promise<ReferralLook
     };
   }
 
+  const hasLocation = !!(intake.location_zip?.trim() || intake.location_city?.trim() || intake.location_state?.trim());
+  if (!hasLocation) {
+    return {
+      success: false,
+      referrals: [],
+      message: 'I need your location (zip code or city) to search for providers. Please share where you\'re located.',
+    };
+  }
+
   const specialtyKeyword = intake.recommended_specialty?.trim() || undefined;
 
   try {

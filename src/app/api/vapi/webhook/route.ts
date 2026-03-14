@@ -97,7 +97,10 @@ export async function POST(request: NextRequest) {
 
     let sessionId: string;
     try {
-      if (payloadSessionId) {
+      const existingByCallId = await getSessionByVapiCallId(vapiCallId);
+      if (existingByCallId?.session?.id) {
+        sessionId = existingByCallId.session.id;
+      } else if (payloadSessionId) {
         const existing = await getSessionByIdServiceRole(payloadSessionId);
         if (existing && existing.status === 'active') {
           await updateSessionVapiCallId(payloadSessionId, vapiCallId);
@@ -112,18 +115,13 @@ export async function POST(request: NextRequest) {
           );
         }
       } else {
-        const existingByCallId = await getSessionByVapiCallId(vapiCallId);
-        if (existingByCallId?.session?.id) {
-          sessionId = existingByCallId.session.id;
-        } else {
-          sessionId = await createOrUpdateSessionServiceRole(
-            (payload as any).agentId || 'general_reflection',
-            vapiCallId,
-            (payload as any).userEmail || (payload as any).user_email,
-            (payload as any).userPhone || (payload as any).user_phone,
-            'voice'
-          );
-        }
+        sessionId = await createOrUpdateSessionServiceRole(
+          (payload as any).agentId || 'general_reflection',
+          vapiCallId,
+          (payload as any).userEmail || (payload as any).user_email,
+          (payload as any).userPhone || (payload as any).user_phone,
+          'voice'
+        );
       }
     } catch (error) {
       console.error('Error creating/updating session:', error);
