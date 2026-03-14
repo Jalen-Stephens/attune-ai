@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       console.log('[findProviders] payload received:', JSON.stringify(parsed.data, null, 2));
     }
 
-    const result = handleFindProviders(parsed.data);
+    const result = await handleFindProviders(parsed.data);
 
     if (parsed.data.sessionId) {
       storeFindProviders(parsed.data.sessionId, result.providers, result.disclaimer);
@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[findProviders] Tool failed:', message, err instanceof Error ? err.stack : '');
     await logToolCall({
       toolName: 'findProviders',
       sessionId: null,

@@ -108,7 +108,7 @@ export default async function EmailConfirmationPage({ params }: PageProps) {
             <div>
               <div className="font-medium text-sm mb-1">Booking Links</div>
               <div className="text-sm text-muted-foreground">
-                Direct links to book appointments with each specialist on Zocdoc
+                Direct links to view each provider's profile and book appointments
               </div>
             </div>
           </div>
@@ -155,7 +155,7 @@ export default async function EmailConfirmationPage({ params }: PageProps) {
               <div className="flex-1">
                 <div className="font-medium text-sm mb-1">Book your appointment</div>
                 <div className="text-sm text-muted-foreground">
-                  Click the booking link to schedule directly on Zocdoc
+                  Click the profile link to visit the provider's website or get directions
                 </div>
               </div>
             </div>

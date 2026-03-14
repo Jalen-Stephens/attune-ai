@@ -1,6 +1,6 @@
 /**
  * Agent Tools
- * 
+ *
  * Functions that the AI agent can call during conversations to:
  * - Collect intake information
  * - Lookup specialists
@@ -8,6 +8,7 @@
  */
 
 import { createOrUpdateIntake, getIntake, logEvent } from './db';
+import { runReferralLookup } from './referrals/lookup';
 import type { Intake } from './types';
 
 /**
@@ -90,17 +91,8 @@ export async function lookupSpecialistsTool(
       };
     }
 
-    // Call the referral lookup API
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const response = await fetch(`${baseUrl}/api/referrals/lookup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ session_id: sessionId }),
-    });
-
-    const data = await response.json();
+    // Run referral lookup directly (no HTTP self-call—fixes voice agent in production)
+    const data = await runReferralLookup(sessionId);
 
     if (!data.success || !data.referrals || data.referrals.length === 0) {
       return {
@@ -116,7 +108,7 @@ export async function lookupSpecialistsTool(
     return {
       success: true,
       message: `I found ${data.referrals.length} specialist${data.referrals.length > 1 ? 's' : ''} for you.`,
-      referrals: data.referrals.map((ref: any) => ({
+      referrals: data.referrals.map((ref) => ({
         provider_name: ref.provider_name,
         specialty: ref.specialty,
         location: [

@@ -169,7 +169,7 @@ export default async function OnlineSummaryPage({ params }: PageProps) {
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>
               <strong>Next Steps:</strong> Review the provider options above and book an appointment
-              directly through Zocdoc using the booking links provided.
+              using the profile links provided.
             </p>
             <p>
               <strong>Questions?</strong> If you have questions about your referral or need to update

@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS intakes (
 CREATE TABLE IF NOT EXISTS referrals (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  provider_id TEXT NOT NULL, -- Zocdoc provider ID
+  provider_id TEXT NOT NULL, -- Google Place ID or legacy provider ID
   provider_name TEXT NOT NULL,
   provider_credentials TEXT,
   specialty TEXT NOT NULL,
@@ -101,7 +101,8 @@ CREATE TABLE IF NOT EXISTS referrals (
   distance_miles DECIMAL(10, 2),
   next_available_date TIMESTAMP WITH TIME ZONE,
   booking_url TEXT NOT NULL,
-  zocdoc_url TEXT NOT NULL,
+  zocdoc_url TEXT, -- Legacy; nullable after Google Places migration
+  place_id TEXT, -- Google Place ID when from Places API
   accepted_insurance JSONB, -- Array of insurance names
   rating DECIMAL(3, 2),
   review_count INTEGER,
@@ -115,7 +116,7 @@ CREATE TABLE IF NOT EXISTS referrals (
 CREATE TABLE IF NOT EXISTS events (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  event_type TEXT NOT NULL, -- 'intake_completed', 'referrals_returned', 'referral_clicked', 'email_sent', 'email_failed', 'zocdoc_lookup', 'zocdoc_error'
+  event_type TEXT NOT NULL, -- 'intake_completed', 'referrals_returned', 'referral_clicked', 'email_sent', 'email_failed', 'provider_search_error'
   payload_json JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

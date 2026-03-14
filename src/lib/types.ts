@@ -320,7 +320,10 @@ export interface Referral {
   distance_miles?: number | null;
   next_available_date?: string | null;
   booking_url: string;
-  zocdoc_url: string;
+  /** @deprecated Legacy Zocdoc field; use booking_url. Now nullable after Google Places migration. */
+  zocdoc_url?: string | null;
+  /** Google Place ID when provider comes from Google Places API */
+  place_id?: string | null;
   accepted_insurance?: string[] | null;
   rating?: number | null;
   review_count?: number | null;
@@ -355,43 +358,15 @@ export interface EmailSummary {
   updated_at?: string;
 }
 
-// Zocdoc Types
-export interface ZocdocProvider {
-  id: string;
+// Provider search (Google Places) — used when mapping PlaceProvider to Referral
+export interface ProviderSearchResult {
+  place_id: string;
   name: string;
-  credentials?: string;
-  specialties: string[];
-  addresses: Array<{
-    address: string;
-    city: string;
-    state: string;
-    zip: string;
-    distance?: number;
-  }>;
-  next_available?: string;
-  booking_url: string;
-  accepted_insurance?: string[];
+  formattedAddress?: string;
   rating?: number;
-  review_count?: number;
-}
-
-export interface ProviderSearchParams {
-  specialty?: string;
-  condition?: string;
-  zip?: string;
-  city?: string;
-  state?: string;
-  radius?: number; // in miles
-  insurance?: string;
-  appointment_type?: 'in-person' | 'telehealth' | 'either';
-  availability_window?: {
-    start: string; // ISO date
-    end: string; // ISO date
-  };
-}
-
-export interface ScoredProvider extends ZocdocProvider {
-  score: number;
-  match_reasons: string[];
-  rank?: number; // Added when returned from searchAndScoreProviders
+  userRatingCount?: number;
+  websiteUri?: string;
+  googleMapsUri?: string;
+  distanceMiles?: number;
+  matchReasons: string[];
 }

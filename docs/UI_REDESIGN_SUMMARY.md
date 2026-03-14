@@ -39,7 +39,7 @@ Complete redesign and implementation of a modern, polished frontend UI supportin
     - Next available appointment
     - Accepted insurance badges
     - Match reasons ("Why we chose this")
-    - Primary CTA: "Book on Zocdoc" (with click tracking)
+    - Primary CTA: "View profile" (with click tracking)
   - Empty state for in-progress searches
   - Safety disclaimer
 
@@ -129,7 +129,7 @@ Complete redesign and implementation of a modern, polished frontend UI supportin
 ### Referral Results Page (Primary Focus)
 1. **Confidence Building**: "Best Match" badge and match reasons explain why providers were chosen
 2. **Clear Hierarchy**: Top referral is visually distinct
-3. **Action-Oriented**: Large, clear "Book on Zocdoc" CTAs
+3. **Action-Oriented**: Large, clear "View profile" CTAs
 4. **Information Density**: All key info visible without scrolling (location, availability, insurance, ratings)
 5. **Reassurance**: Safety disclaimers are present but not alarming
 

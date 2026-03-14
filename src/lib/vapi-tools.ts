@@ -68,7 +68,7 @@ export const VAPI_FUNCTION_DEFINITIONS = [
         },
         recommended_specialty: {
           type: 'string',
-          description: 'The type of specialist recommended based on the user\'s condition (e.g., "dermatologist", "cardiologist", "neurologist")',
+          description: 'Keyword used to find matching therapists. Set from the user\'s reason for visit: "therapy" (general), "anxiety", "depression", "couples", "sleep", "addiction", or "psychiatrist" (for medication evaluation). This improves search results—always set it before calling lookupSpecialists.',
         },
       },
       required: ['user_email'],
@@ -122,9 +122,9 @@ You are now equipped to help users with screening and specialist referrals. Foll
 - Always include: "This is for screening and referral purposes only, not medical advice"
 
 ### 3. Specialist Recommendation
-- Based on the user's reason for visit and symptoms, recommend a type of specialist (e.g., "dermatologist", "cardiologist", "neurologist")
-- Use the createOrUpdateIntake function to save this information as you collect it
-- Once you have location, insurance, and consent, call lookupSpecialists to find providers
+- Based on the user's reason for visit and symptoms, set recommended_specialty in createOrUpdateIntake to one of: "therapy" (general), "anxiety", "depression", "couples", "sleep", "addiction", or "psychiatrist" (if they may need medication evaluation). This improves provider search results.
+- Use the createOrUpdateIntake function to save this information as you collect it. Always include recommended_specialty when you have enough context (e.g., user says anxiety → "anxiety", sleep issues → "sleep", relationship help → "couples").
+- Once you have location, consent, and recommended_specialty (or "therapy" if unclear), call lookupSpecialists to find providers
 
 ### 4. Present Referrals
 - Present 1-3 providers with:
@@ -141,8 +141,8 @@ You are now equipped to help users with screening and specialist referrals. Foll
 - Confirm that they will receive an email with all referral options
 
 ### Function Usage
-- Call createOrUpdateIntake incrementally as you collect information (don't wait until the end)
-- Call lookupSpecialists only after you have: location (zip), insurance, and consent_to_use_info = true
+- Call createOrUpdateIntake incrementally as you collect information (don't wait until the end). Include recommended_specialty whenever you can infer it from the user's reason for visit.
+- Call lookupSpecialists only after you have: location (zip), consent_to_use_info = true, and recommended_specialty set (use "therapy" if no specific focus).
 - Call sendReferralEmail at the end if consent_to_email = true
 
 Remember: Be supportive, non-judgmental, and clear about limitations. Never diagnose or provide medical advice.`;

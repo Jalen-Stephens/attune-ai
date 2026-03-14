@@ -183,7 +183,7 @@ export function ReferralCard({ referral, isBestMatch = false }: ReferralCardProp
             onClick={handleClick}
             disabled={isTracking}
           >
-            Book on Zocdoc
+            View profile
             <ExternalLink className="h-4 w-4 ml-2" />
           </Button>
         </div>

@@ -27,3 +27,4 @@ supabase db push
 ## Migrations
 
 - **001_profiles.sql** – User profiles table keyed by `auth.users.id`, RLS policies, and trigger to create a profile row on signup. Run this after enabling Supabase Auth so that new users get a profile automatically.
+- **010_google_places_referrals.sql** – Add `place_id` to referrals; make `zocdoc_url` nullable (Google Places migration).

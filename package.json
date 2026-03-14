@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "rag:harvest": "tsx scripts/rag_harvest.ts",
+    "test:google-places": "tsx scripts/test_google_places.ts",
     "test": "vitest"
   },
   "dependencies": {

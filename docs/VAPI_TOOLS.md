@@ -8,7 +8,7 @@ Server-side tools for the Vapi voice agent (Peter). Each tool is a standalone Ne
 
 | Tool Name       | Route                             | Purpose                                              |
 |----------------|-----------------------------------|------------------------------------------------------|
-| `findProviders` | `POST /api/tools/findProviders`   | Simulate provider search (Zocdoc-style). Returns sample results. |
+| `findProviders` | `POST /api/tools/findProviders`   | Search for therapists via Google Places API by zip and specialty. Returns real results. |
 | `getRagResources` | `POST /api/tools/getRagResources` | Fetch RAG-backed resources for the patient after the call. |
 
 Both routes require the `X-VAPI-SECRET` header matching `VAPI_SERVER_SECRET` in your environment. Missing or invalid secret returns `401 Unauthorized`.
@@ -76,19 +76,19 @@ Use the same secret when configuring the tool URLs in the Vapi Dashboard. Vapi w
 {
   "providers": [
     {
-      "providerId": "prov-001",
-      "name": "Dr. Sarah Chen",
-      "credentials": "PsyD, Licensed Psychologist",
-      "specialties": ["Anxiety", "Depression", "CBT"],
-      "modality": "telehealth",
-      "location": { "city": "San Francisco", "state": "CA", "zip": "94102" },
-      "distanceMiles": 3,
-      "nextAvailable": "2025-02-05T14:00:00.000Z",
-      "bookingUrl": "https://zocdoc.com/providers/prov-001",
-      "summary": "Warm, evidence-based approach. Specializes in anxiety and mood."
+      "providerId": "ChIJ...",
+      "name": "Example Therapy Practice",
+      "credentials": "",
+      "specialties": ["Therapist"],
+      "modality": "both",
+      "location": { "city": "", "state": "", "zip": "94102" },
+      "distanceMiles": 2.5,
+      "nextAvailable": "",
+      "bookingUrl": "https://www.google.com/maps/search/?api=1&query_place_id=ChIJ...",
+      "summary": "123 Main St, San Francisco, CA · 4.5 rating · nearby, highly rated"
     }
   ],
-  "disclaimer": "These are sample results while provider search is in beta."
+  "disclaimer": "Results from Google Places. Contact providers for availability and insurance."
 }
 ```
 

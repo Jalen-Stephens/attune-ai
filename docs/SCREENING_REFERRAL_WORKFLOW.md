@@ -6,8 +6,8 @@ This document describes the end-to-end screening and referral workflow implement
 
 The system transforms voice/chat agents into a "screening + referral" layer that:
 1. Collects intake information during conversations
-2. Uses Zocdoc API to find matching specialists
-3. Presents 1-3 best options during the conversation
+2. Uses Google Places API to find therapists/specialists near the user
+3. Presents 1-5 best options during the conversation
 4. Sends a structured email summary after the interaction
 
 ## Architecture
@@ -23,14 +23,14 @@ The system transforms voice/chat agents into a "screening + referral" layer that
 
 ### Key Components
 
-#### 1. Zocdoc Integration (`src/lib/zocdoc/`)
-- **client.ts**: HTTP client with retries, timeouts, and error handling
-- **searchProviders.ts**: Provider search, scoring, and ranking logic
+#### 1. Google Places Integration (`src/lib/google-places/`)
+- **client.ts**: Places API and Geocoding API client (retries, timeouts)
+- **searchTherapists.ts**: Therapist search by location (zip/city/state), scoring and ranking
 
 #### 2. Agent Tools (`src/lib/agent-tools.ts`)
 Functions the AI agent can call:
 - `createOrUpdateIntake`: Save intake information incrementally
-- `lookupSpecialists`: Search Zocdoc and return top 3 providers
+- `lookupSpecialists`: Search Google Places and return top providers
 - `sendReferralEmail`: Enqueue email summary
 
 #### 3. Email Service (`src/lib/email/`)
@@ -77,9 +77,10 @@ Agent calls: createOrUpdateIntake (incrementally)
 ```
 Agent calls: lookupSpecialists
 → Validates intake complete
-→ Calls Zocdoc API
-→ Scores providers (specialty match, distance, availability, insurance, rating)
-→ Returns top 3 with match reasons
+→ Geocodes location (zip/city/state) via Geocoding API
+→ Calls Google Places API (text search: therapist + location bias)
+→ Scores providers (distance, rating)
+→ Returns top results with match reasons
 → Stores in referrals table
 ```
 
@@ -112,9 +113,10 @@ Agent calls: sendReferralEmail
 Add to `.env`:
 
 ```bash
-# Zocdoc
-ZOCDOC_API_KEY=your_zocdoc_api_key
-ZOCDOC_API_BASE_URL=https://api.zocdoc.com/v1
+# Google Places (provider search)
+GOOGLE_PLACES_API_KEY=your_google_places_api_key
+# Optional: for address→lat/lng (defaults to Places key if unset)
+GOOGLE_GEOCODING_API_KEY=your_geocoding_api_key
 
 # Email (Resend)
 RESEND_API_KEY=your_resend_api_key
@@ -159,7 +161,7 @@ The agent system prompt is automatically enhanced with screening workflow instru
 ### Reliability
 - Idempotency: Session creation uses Vapi call ID for deduplication
 - Retries: Email sending has 3 retries with exponential backoff
-- Graceful fallbacks: If Zocdoc fails, user gets "we'll email options shortly"
+- Graceful fallbacks: If Google Places fails, user gets "we'll email options shortly"
 
 ## Analytics & Observability
 
@@ -169,7 +171,7 @@ The agent system prompt is automatically enhanced with screening workflow instru
 - `referral_clicked`: User clicked booking link
 - `email_sent`: Email delivered successfully
 - `email_failed`: Email delivery failed
-- `zocdoc_error`: Zocdoc API error
+- `provider_search_error`: Provider search (Google Places) API error
 - `function_call`: Agent function call executed
 
 ### Metrics
@@ -177,18 +179,18 @@ Query `events` table for:
 - Intake completion rate
 - Referral click-through rate
 - Email delivery rate
-- Zocdoc API success rate
+- Provider search (Google Places) success rate
 
 ## Testing
 
 ### Development Mode
 - Email uses console provider (logs to stdout)
-- Zocdoc API key optional (returns empty results with warning)
+- Google Places API key optional (returns empty results with warning)
 - Webhook signature verification skipped if secret not set
 
 ### Production Checklist
 - [ ] Set `RESEND_API_KEY`
-- [ ] Set `ZOCDOC_API_KEY`
+- [ ] Set `GOOGLE_PLACES_API_KEY`
 - [ ] Set `VAPI_WEBHOOK_SECRET`
 - [ ] Configure `RESEND_FROM_EMAIL` domain
 - [ ] Test webhook signature verification
@@ -229,9 +231,8 @@ POST /api/referrals/email
 
 ## Next Steps
 
-1. **Zocdoc API Integration**: Replace placeholder client with actual Zocdoc API calls
-2. **Background Jobs**: Consider using Trigger.dev or similar for async email processing
-3. **Caching**: Add Redis/memory cache for Zocdoc provider results
-4. **Rate Limiting**: Add rate limits to API endpoints
-5. **Monitoring**: Set up alerts for email failures, Zocdoc errors
-6. **A/B Testing**: Test different provider scoring weights
+1. **Background Jobs**: Consider using Trigger.dev or similar for async email processing
+2. **Caching**: Add Redis/memory cache for Google Places provider results
+3. **Rate Limiting**: Add rate limits to API endpoints
+4. **Monitoring**: Set up alerts for email failures, provider search errors
+5. **A/B Testing**: Test different provider scoring weights
