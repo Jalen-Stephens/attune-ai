@@ -22,6 +22,9 @@ export async function sendReferralEmail(
   intake: Intake,
   referrals: Referral[]
 ): Promise<void> {
+  if (!intake.user_email?.trim()) {
+    throw new Error('Cannot send referral email: intake has no email address');
+  }
   // Generate email content
   const { subject, html, text } = generateReferralEmail(intake, referrals);
 

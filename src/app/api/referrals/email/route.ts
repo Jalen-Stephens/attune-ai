@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getIntake, getReferrals, createOrGetEmailSummary, logEvent } from '@/lib/db';
+import { getIntakeServiceRole, getReferralsServiceRole, logEvent } from '@/lib/db';
 import { sendReferralEmail } from '@/lib/email';
 
 const EmailSchema = z.object({
@@ -12,8 +12,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { session_id } = EmailSchema.parse(body);
 
-    // Get intake
-    const intake = await getIntake(session_id);
+    // Use service role so this works when called from the voice webhook (no user cookie)
+    const intake = await getIntakeServiceRole(session_id);
     
     if (!intake) {
       return NextResponse.json(
@@ -29,8 +29,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get referrals
-    const referrals = await getReferrals(session_id);
+    if (!intake.user_email?.trim()) {
+      return NextResponse.json(
+        { error: 'No email address on intake' },
+        { status: 400 }
+      );
+    }
+
+    const referrals = await getReferralsServiceRole(session_id);
 
     // Generate and send email (this will be handled by background job)
     // For now, we'll call it directly but in production this should be enqueued

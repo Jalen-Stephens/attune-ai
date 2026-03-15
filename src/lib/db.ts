@@ -487,7 +487,7 @@ export async function getSessionByIdServiceRole(sessionId: string): Promise<Sess
  */
 export async function createOrUpdateIntake(
   sessionId: string,
-  intakeData: Partial<Intake> & { user_email: string }
+  intakeData: Partial<Intake>
 ): Promise<Intake> {
   const supabase = await createServerClient();
   
@@ -548,22 +548,25 @@ export async function getIntakeServiceRole(sessionId: string): Promise<Intake | 
 
 /**
  * Create or update intake (service role). Use from webhook/agent-tools where there is no user session so RLS would block.
+ * Only includes defined (non-undefined) fields so partial updates do not overwrite existing location or other fields with null.
  */
 export async function createOrUpdateIntakeServiceRole(
   sessionId: string,
-  intakeData: Partial<Intake> & { user_email: string }
+  intakeData: Partial<Intake>
 ): Promise<Intake> {
+  const payload: Record<string, unknown> = {
+    session_id: sessionId,
+    updated_at: new Date().toISOString(),
+  };
+  for (const [key, value] of Object.entries(intakeData)) {
+    if (value !== undefined) {
+      payload[key] = value;
+    }
+  }
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from('intakes')
-    .upsert(
-      {
-        session_id: sessionId,
-        ...intakeData,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'session_id' }
-    )
+    .upsert(payload, { onConflict: 'session_id' })
     .select()
     .single();
 
@@ -640,6 +643,20 @@ export async function getReferrals(sessionId: string): Promise<Referral[]> {
     throw new Error(`Failed to get referrals: ${error.message}`);
   }
   
+  return data || [];
+}
+
+/**
+ * Get referrals by session ID (service role). Use from webhook/email route when there is no user session so RLS would block.
+ */
+export async function getReferralsServiceRole(sessionId: string): Promise<Referral[]> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from('referrals')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('rank', { ascending: true });
+  if (error) throw new Error(`Failed to get referrals: ${error.message}`);
   return data || [];
 }
 

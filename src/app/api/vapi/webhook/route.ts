@@ -160,6 +160,11 @@ export async function POST(request: NextRequest) {
           const functionName = functionCall.name;
           const functionArgs = functionCall.arguments || {};
 
+          if (process.env.NODE_ENV === 'development') {
+            const hasLocation = !!(functionArgs?.location_zip || functionArgs?.location_city);
+            console.log('[vapi webhook] function-call', { sessionId, functionName, hasLocation });
+          }
+
           let result: any = { success: false, message: 'Unknown function' };
 
           try {
