@@ -86,3 +86,23 @@ WHERE (metadata->>'source_url' IS NULL AND metadata->>'content_hash' IS NULL);
 ```
 
 This removes only folder-sourced documents and their chunks (via cascade). All other data is unchanged.
+
+---
+
+## Removing tiny test articles
+
+If you added short placeholder articles for testing (e.g. one-sentence “Effective Communication Tips” or “Building a Sober Support Network” style snippets that aren’t real links or articles), run in **Supabase Dashboard → SQL Editor**:
+
+```sql
+-- Preview: list docs that will be removed (content under 500 chars)
+SELECT id, agent_id, title, LENGTH(content) AS len
+FROM rag_docs
+WHERE LENGTH(content) < 500
+ORDER BY agent_id, title;
+
+-- Delete those docs (chunks removed via CASCADE)
+DELETE FROM rag_docs
+WHERE LENGTH(content) < 500;
+```
+
+Adjust `500` if your real articles are shorter. After running, those test articles will no longer appear in “Suggested resources” in the dashboard chat.

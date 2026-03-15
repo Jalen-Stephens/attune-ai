@@ -10,6 +10,7 @@
 import { createOrUpdateIntakeServiceRole, getIntakeServiceRole, logEvent, insertSessionResource } from './db';
 import { runReferralLookup } from './referrals/lookup';
 import { logToolCall } from './tools/_logger';
+import { storeFindProviders } from './tools/_toolResultCache';
 import type { Intake } from './types';
 
 /** Map referral from runReferralLookup to the shape expected by ProviderCards / timeline / session_resources */
@@ -159,6 +160,7 @@ export async function lookupSpecialistsTool(
         durationMs: 0,
         payload: { providers: providersForDisplay, disclaimer },
       });
+      storeFindProviders(sessionId, providersForDisplay, disclaimer);
     } catch (err) {
       console.error('Failed to write session_resources/tool event for voice referrals:', err);
     }

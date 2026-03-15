@@ -115,6 +115,9 @@ export async function POST(request: NextRequest) {
           );
         }
       } else {
+        console.warn(
+          '[Vapi webhook] Voice session created without variableValues.sessionId; referrals will not appear in dashboard. Ensure the client passes sessionId when starting a call from the app.'
+        );
         sessionId = await createOrUpdateSessionServiceRole(
           (payload as any).agentId || 'general_reflection',
           vapiCallId,

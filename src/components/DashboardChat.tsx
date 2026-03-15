@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import { ChatComposer } from './ChatComposer';
 import { AssistantResponse, type AssistantResponseData } from './AssistantResponse';
 import { ProviderCards } from './ProviderCards';
@@ -42,6 +43,7 @@ export interface DashboardChatProps {
 const DEFAULT_CHAT_AGENT_ID = 'general_reflection';
 
 export default function DashboardChat({ userName = 'there' }: DashboardChatProps) {
+  const router = useRouter();
   const [turns, setTurns] = React.useState<ConversationTurn[]>([]);
   const [sessionId, setSessionId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -137,6 +139,9 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
                   const typedTurns = prev.filter((t) => t.source === 'typed');
                   return [...typedTurns, ...timelineTurns];
                 });
+                if (timelineTurns.some((t) => t.toolResult?.tool === 'findProviders')) {
+                  router.refresh();
+                }
                 return;
               }
             }
@@ -166,7 +171,7 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
         if (i < maxAttempts - 1) await new Promise((r) => setTimeout(r, delayMs));
       }
     },
-    []
+    [router]
   );
 
   const onCallEnd = React.useCallback(
@@ -177,15 +182,21 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
     [pollAndSyncTranscript]
   );
 
-  const onToolResult = React.useCallback((result: VapiToolResult) => {
-    const turn: ConversationTurn = {
-      id: `tool-${result.tool}-${Date.now()}`,
-      role: 'assistant',
-      toolResult: result,
-      source: 'voice',
-    };
-    setTurns((prev) => [...prev, turn]);
-  }, []);
+  const onToolResult = React.useCallback(
+    (result: VapiToolResult) => {
+      const turn: ConversationTurn = {
+        id: `tool-${result.tool}-${Date.now()}`,
+        role: 'assistant',
+        toolResult: result,
+        source: 'voice',
+      };
+      setTurns((prev) => [...prev, turn]);
+      if (result.tool === 'findProviders') {
+        router.refresh();
+      }
+    },
+    [router]
+  );
 
   const {
     isConnected: isVoiceActive,
@@ -222,6 +233,7 @@ export default function DashboardChat({ userName = 'there' }: DashboardChatProps
             source: 'voice',
           };
           setTurns((prev) => [...prev, turn]);
+          router.refresh();
         }
         if (data.getRagResources && data.getRagResources.storedAt > (last.getRagResources ?? 0)) {
           last.getRagResources = data.getRagResources.storedAt;
