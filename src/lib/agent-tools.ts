@@ -59,7 +59,7 @@ export async function createOrUpdateIntakeTool(
     insurance_provider?: string;
     insurance_plan?: string;
     appointment_preference?: 'in-person' | 'telehealth' | 'either';
-    user_email: string;
+    user_email?: string;
     consent_to_use_info?: boolean;
     consent_to_email?: boolean;
     recommended_specialty?: string;
@@ -123,6 +123,15 @@ export async function lookupSpecialistsTool(
         success: false,
         message: 'I need your consent to use your information to find specialists. Can I proceed?',
       };
+    }
+
+    const hasLocation = !!(
+      intake.location_zip?.trim() ||
+      intake.location_city?.trim() ||
+      intake.location_state?.trim()
+    );
+    if (!hasLocation && process.env.NODE_ENV === 'development') {
+      console.warn('[lookupSpecialists] Intake has no location (zip/city/state) for session', sessionId);
     }
 
     // Run referral lookup directly (no HTTP self-call—fixes voice agent in production)
@@ -220,6 +229,13 @@ export async function sendReferralEmailTool(
       };
     }
 
+    if (!intake.user_email?.trim()) {
+      return {
+        success: false,
+        message: 'I need your email address to send the referral summary. What email should I use?',
+      };
+    }
+
     // Call the email API
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const response = await fetch(`${baseUrl}/api/referrals/email`, {
@@ -234,7 +250,7 @@ export async function sendReferralEmailTool(
 
     if (data.success) {
       await logEvent(sessionId, 'email_enqueued', {
-        to_email: intake.user_email,
+        to_email: intake.user_email ?? '',
       });
     }
 

@@ -298,7 +298,7 @@ export interface Intake {
   insurance_provider?: string | null;
   insurance_plan?: string | null;
   appointment_preference?: 'in-person' | 'telehealth' | 'either' | null;
-  user_email: string;
+  user_email?: string | null;
   consent_to_use_info: boolean;
   consent_to_email: boolean;
   recommended_specialty?: string | null;

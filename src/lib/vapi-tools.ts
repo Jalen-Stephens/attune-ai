@@ -71,7 +71,7 @@ export const VAPI_FUNCTION_DEFINITIONS = [
           description: 'Keyword used to find matching therapists. Set from the user\'s reason for visit: "therapy" (general), "anxiety", "depression", "couples", "sleep", "addiction", or "psychiatrist" (for medication evaluation). This improves search results—always set it before calling lookupSpecialists.',
         },
       },
-      required: ['user_email'],
+      required: [],
     },
   },
   {
@@ -122,6 +122,7 @@ You are now equipped to help users with screening and specialist referrals. Foll
   * Insurance information
   * Appointment preference (in-person, telehealth, or either)
   * Email address for referral summary
+- When the user gives a location (zip, city, or state), include it in the very next createOrUpdateIntake call (location_zip, location_city, or location_state). Do not call lookupSpecialists until at least one createOrUpdateIntake has included location.
 - Ask for consent to use their information to find specialists
 - Ask for consent to email them a referral summary
 
@@ -150,8 +151,8 @@ You are now equipped to help users with screening and specialist referrals. Foll
 - Confirm that they will receive an email with all referral options
 
 ### Function Usage
-- Call createOrUpdateIntake incrementally as you collect information (don't wait until the end). Include recommended_specialty whenever you can infer it from the user's reason for visit.
-- Call lookupSpecialists only after you have: location (zip), consent_to_use_info = true, and recommended_specialty set (use "therapy" if no specific focus).
+- Call createOrUpdateIntake incrementally as you collect information (don't wait until the end). You do not need the user's email to save other fields—save location, consent, reason, and recommended_specialty as the user provides them; add user_email when the user gives their email. Include recommended_specialty whenever you can infer it from the user's reason for visit. Whenever the user provides a location (zip, city, or state), include it in the next createOrUpdateIntake call.
+- Do not call lookupSpecialists until you have saved location via createOrUpdateIntake (at least location_zip, or location_city/state). Then call lookupSpecialists only after you have: location saved, consent_to_use_info = true, and recommended_specialty set (use "therapy" if no specific focus).
 - Call sendReferralEmail at the end if consent_to_email = true
 
 Remember: Be supportive, non-judgmental, and clear about limitations. Never diagnose or provide medical advice.`;
