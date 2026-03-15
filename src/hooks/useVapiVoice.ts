@@ -44,9 +44,9 @@ function isMeetingEndedNoise(err: unknown): boolean {
 function buildFirstMessageFromContext(ctx: CallContextResponse): string {
   const firstName = (ctx.firstName ?? '').trim();
   if (firstName) {
-    return `Hi ${firstName}, I'm Peter. What's been going on?`;
+    return `Hi ${firstName}, I'm your Attune AI assistant. What's been going on?`;
   }
-  return `Hi, I'm Peter. What's been going on?`;
+  return `Hi, I'm your Attune AI assistant. What's been going on?`;
 }
 
 export interface UseVapiVoiceOptions {
